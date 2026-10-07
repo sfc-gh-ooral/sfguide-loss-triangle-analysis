@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent: #7B0EA0;
+  --color-accent-hover: #9013C8;
+  --color-accent-light: #C44FE8;
+  --color-accent-dim: #4A0870;
+  --color-surface-0: #09090F;
+  --color-surface-1: #0F0F1C;
+  --color-surface-2: #161626;
+  --color-surface-3: #1E1E32;
+  --color-surface-4: #252540;
+  --color-border: #2A2A44;
+  --color-border-subtle: #1E1E32;
+  --color-text-primary: #F0F0FF;
+  --color-text-secondary: #9090B8;
+  --color-text-muted: #5A5A80;
+  --color-positive: #10B981;
+  --color-negative: #EF4444;
+  --color-warning: #F59E0B;
+  --color-info: #3B82F6;
+  --color-snowflake: #29B5E8;
+}
+
+:root {
+  --background: var(--color-surface-0);
+  --foreground: var(--color-text-primary);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--color-surface-0);
+  color: var(--color-text-primary);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface-1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-dim);
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(123, 14, 160, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(123, 14, 160, 0.8); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+.glow-purple {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.triangle-cell-heat-0 { background-color: rgba(123, 14, 160, 0.06); }
+.triangle-cell-heat-1 { background-color: rgba(123, 14, 160, 0.15); }
+.triangle-cell-heat-2 { background-color: rgba(123, 14, 160, 0.26); }
+.triangle-cell-heat-3 { background-color: rgba(123, 14, 160, 0.38); }
+.triangle-cell-heat-4 { background-color: rgba(123, 14, 160, 0.52); }
+.triangle-cell-heat-5 { background-color: rgba(123, 14, 160, 0.68); }
+.triangle-cell-heat-6 { background-color: rgba(123, 14, 160, 0.85); }
+
+.triangle-cell-highlighted {
+  background-color: rgba(244, 159, 10, 0.35) !important;
+  outline: 2px solid #F59E0B;
+  outline-offset: -2px;
+}
+
+.triangle-cell-anomaly {
+  background-color: rgba(239, 68, 68, 0.25) !important;
+  outline: 2px solid #EF4444;
+  outline-offset: -2px;
+}
+
+.streaming-cursor::after {
+  content: "▋";
+  display: inline;
+  animation: blink 0.7s step-end infinite;
+  color: #7B0EA0;
+}
