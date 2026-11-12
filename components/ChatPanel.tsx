@@ -6,6 +6,7 @@ import { AGENT_RESPONSES, SUGGESTED_PROMPTS, matchResponseKey, type ResponseKey 
 import { TRIANGLES_BY_ID } from '@/lib/data';
 import type { ChatMessage } from '@/lib/types';
 import TriangleTable from './TriangleTable';
+import { HOSTED_EXAMPLE } from '@/lib/hosted';
 import { cn } from '@/lib/utils';
 
 function renderMarkdown(text: string): React.ReactNode {
@@ -261,8 +262,9 @@ function MessageBubble({ message, isStreaming }: { message: ChatMessage; isStrea
           </div>
         )}
 
-        <div className="mt-1 px-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-          {isUser ? 'You' : 'Cortex Agent'} · {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        {/* The welcome message is pre-rendered, so its time legitimately differs from the browser's */}
+        <div className="mt-1 px-1 text-xs" style={{ color: 'var(--color-text-muted)' }} suppressHydrationWarning>
+          {isUser ? 'You' : HOSTED_EXAMPLE ? 'Scripted answer · sample data' : 'Cortex Agent'} · {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </div>
       </div>
 
@@ -321,7 +323,8 @@ export default function ChatPanel() {
     let key: ResponseKey;
 
     try {
-      // Try the API endpoint first
+      // Try the API endpoint first (the hosted example has none, so it goes straight to the scripts)
+      if (HOSTED_EXAMPLE) throw new Error('No API in the hosted example');
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

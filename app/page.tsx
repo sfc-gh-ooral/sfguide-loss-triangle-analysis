@@ -6,6 +6,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import { TrendingUp, TrendingDown, Database, BarChart3, MessageSquare, Triangle, ArrowRight, AlertTriangle, CheckCircle } from 'lucide-react';
+import { HOSTED_EXAMPLE } from '@/lib/hosted';
 import { PORTFOLIO_KPIS, DEVELOPMENT_TREND_DATA, RESERVE_WATERFALL } from '@/lib/data';
 
 function KPICard({ label, value, sub, trend, trendUp }: {
@@ -87,6 +88,7 @@ export default function DashboardPage() {
   const [dataSource, setDataSource] = useState<'mock' | 'snowflake'>('mock');
 
   useEffect(() => {
+    if (HOSTED_EXAMPLE) return;
     fetch('/api/kpis').then(r => r.json()).then(data => {
       if (data.kpis) { setKpi(data.kpis); setDataSource(data.source ?? 'mock'); }
     }).catch(() => {});
@@ -106,7 +108,7 @@ export default function DashboardPage() {
           </div>
           <div className="text-xs px-2.5 py-1 rounded-full font-semibold"
             style={{ background: 'rgba(41,181,232,0.15)', color: 'var(--color-snowflake)', border: '1px solid rgba(41,181,232,0.25)' }}>
-            {dataSource === 'snowflake' ? 'Live Data · Snowflake' : 'Demo Mode · Mock Data'}
+            {dataSource === 'snowflake' ? 'Live Data · Snowflake' : 'Sample Data Mode'}
           </div>
         </div>
         <h1 className="text-3xl font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>

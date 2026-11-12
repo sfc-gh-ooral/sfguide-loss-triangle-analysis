@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import ChatPanel from '@/components/ChatPanel';
 import { Sparkles } from 'lucide-react';
 import { Suspense } from 'react';
+import { HOSTED_EXAMPLE } from '@/lib/hosted';
 
 function ChatContent() {
   return (
@@ -26,8 +27,8 @@ function ChatContent() {
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--color-positive)' }} />
-            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Connected</span>
+            <div className={`w-2 h-2 rounded-full${HOSTED_EXAMPLE ? '' : ' animate-pulse'}`} style={{ background: HOSTED_EXAMPLE ? 'var(--color-text-muted)' : 'var(--color-positive)' }} />
+            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{HOSTED_EXAMPLE ? 'Scripted answers' : 'Connected'}</span>
           </div>
         </div>
       </div>

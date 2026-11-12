@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:example": "node scripts/build-hosted-example.mjs",
     "start": "next start",
     "lint": "eslint"
   },

@@ -5,6 +5,7 @@ import { ALL_TRIANGLES, TRIANGLES_BY_ID } from '@/lib/data';
 import { computeLinkRatios } from '@/lib/utils';
 import type { LossTriangle } from '@/lib/types';
 import { CheckSquare, Play, Info, TrendingUp, TrendingDown, RotateCcw } from 'lucide-react';
+import { HOSTED_EXAMPLE } from '@/lib/hosted';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 type LDFMethod = 'vol-wtd-3yr' | 'vol-wtd-5yr' | 'simple-3yr' | 'simple-5yr';
@@ -132,6 +133,7 @@ export default function ConsistencyPage() {
   const [priorUltimates, setPriorUltimates] = useState<Record<string, number>>(DEFAULT_PRIOR_ULTIMATES);
 
   useEffect(() => {
+    if (HOSTED_EXAMPLE) return;
     fetch('/api/triangles').then(r => r.json()).then(data => {
       if (data.triangles?.length) {
         setTriangles(data.triangles);

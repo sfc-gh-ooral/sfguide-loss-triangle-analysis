@@ -5,6 +5,7 @@ import { TRIANGLES_BY_ID } from '@/lib/data';
 import type { LossTriangle } from '@/lib/types';
 import TriangleTable from '@/components/TriangleTable';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { HOSTED_EXAMPLE } from '@/lib/hosted';
 import { Layers, Info, TrendingUp } from 'lucide-react';
 
 type ViewMode = 'coverage' | 'tier';
@@ -60,6 +61,7 @@ export default function SegmentsPage() {
   const [trianglesById, setTrianglesById] = useState<Record<string, LossTriangle>>(TRIANGLES_BY_ID);
 
   useEffect(() => {
+    if (HOSTED_EXAMPLE) return;
     fetch('/api/triangles').then(r => r.json()).then(data => {
       if (data.triangles?.length) {
         const byId: Record<string, LossTriangle> = {};

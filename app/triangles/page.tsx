@@ -5,6 +5,7 @@ import { ALL_TRIANGLES } from '@/lib/data';
 import TriangleTable from '@/components/TriangleTable';
 import type { LossTriangle } from '@/lib/types';
 import { Triangle, ChevronRight, Info } from 'lucide-react';
+import { HOSTED_EXAMPLE } from '@/lib/hosted';
 import { cn } from '@/lib/utils';
 
 const COVERAGE_COLORS: Record<string, string> = {
@@ -24,6 +25,7 @@ export default function TrianglesPage() {
   const [selected, setSelected] = useState<LossTriangle>(ALL_TRIANGLES[0]);
 
   useEffect(() => {
+    if (HOSTED_EXAMPLE) return;
     fetch('/api/triangles').then(r => r.json()).then(data => {
       if (data.triangles?.length) {
         setTriangles(data.triangles);
