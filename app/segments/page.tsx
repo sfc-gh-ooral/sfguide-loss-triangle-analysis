@@ -5,8 +5,11 @@ import { TRIANGLES_BY_ID } from '@/lib/data';
 import type { LossTriangle } from '@/lib/types';
 import TriangleTable from '@/components/TriangleTable';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { HOSTED_EXAMPLE } from '@/lib/hosted';
-import { Layers, Info, TrendingUp } from 'lucide-react';
+import { liveJson, useMode } from '@/lib/mode';
+import { sampleDelayMs, wait } from '@/lib/sample-timing';
+import { AiSourceBadge, LiveError } from '@/components/AiBadges';
+import { INSIGHT_STEPS, Reasoning } from '@/components/Reasoning';
+import { Layers, Info, TrendingUp, Sparkles } from 'lucide-react';
 
 type ViewMode = 'coverage' | 'tier';
 
@@ -43,16 +46,18 @@ function CustomTooltip({ active, payload, label }: {
   );
 }
 
-const AI_INSIGHTS: Record<ViewMode, string[]> = {
+// Scripted Sample-mode insights. Every number is taken from the bundled synthetic data (the same
+// values sql/setup.sql loads), so they match what AI_COMPLETE sees in Live mode.
+const SAMPLE_INSIGHTS: Record<ViewMode, string[]> = {
   coverage: [
-    'Liability develops much slower than physical damage lines — 12→24 LDF of 1.592 vs. 1.364 for collision. This reflects bodily injury litigation timelines of 18-26 months vs. property repair timelines of 30-90 days.',
-    'Comprehensive resolves fastest due to high total-loss rates on weather and theft claims — most close within 45 days of reporting.',
-    'All three lines share elevated development in the 2022 accident year, pointing to a systemic inflation driver rather than a line-specific issue.',
+    'Liability develops slowest: its selected 12→24 LDF is 1.592 versus 1.364 for collision and 1.216 for comprehensive, and its 1.042 tail factor is the largest, so it carries the most IBNR relative to paid ($159.6M on $569.2M reported).',
+    'Comprehensive is the most mature line, with a 12→24 LDF of 1.216 and a 1.010 tail, leaving $46.5M of IBNR on $826.6M reported.',
+    'Every flagged link ratio on the three overall triangles is in AY 2020, mostly at 12→24 and 24→36 months. That points to one accident year with delayed, then catch-up emergence rather than a line-specific trend.',
   ],
   tier: [
-    'Tier 1 (high-value vehicles) develops 7.9% slower at 12→24 months vs. Tier 2 (1.423 vs. 1.318). The main driver is repair complexity — luxury and EV vehicles require certified shops and often have supply chain constraints for parts.',
-    'Tier 2 vehicles reach total-loss thresholds faster (31.7% vs. 18.3% total-loss rate), closing claims earlier and reducing late-period development.',
-    'Using a blended triangle that combines both tiers creates systematic bias: understating Tier 1 reserves while overstating Tier 2. As the EV mix grows, this bias will increase.',
+    'Tier 1 develops more than Tier 2 at every early age: the selected 12→24 LDF is 1.423 versus 1.318, and the tail factor is 1.020 versus 1.016.',
+    'Tier 1 carries $115.2M of IBNR on $1,123.2M reported (10.3%), versus $65.2M on $801.3M (8.1%) for Tier 2. Both ultimates are about 3% above prior.',
+    'A single blended collision triangle (12→24 LDF 1.364) sits below the Tier 1 pattern and above Tier 2, so reviewing the tiers separately shows where the blend shifts reserves between them.',
   ],
 };
 
@@ -60,16 +65,43 @@ export default function SegmentsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('tier');
   const [trianglesById, setTrianglesById] = useState<Record<string, LossTriangle>>(TRIANGLES_BY_ID);
 
+  const { mode } = useMode();
+  const live = mode === 'live';
+  const [error, setError] = useState<string>();
+  const [insights, setInsights] = useState<{ view: ViewMode; items: string[]; ms?: number; model?: string } | null>(null);
+  const [insightState, setInsightState] = useState<{ running: boolean; expectedMs: number; error?: string }>({ running: false, expectedMs: 6000 });
+
   useEffect(() => {
-    if (HOSTED_EXAMPLE) return;
-    fetch('/api/triangles').then(r => r.json()).then(data => {
-      if (data.triangles?.length) {
-        const byId: Record<string, LossTriangle> = {};
-        for (const t of data.triangles) byId[t.id] = t;
-        setTrianglesById(byId);
-      }
-    }).catch(() => {});
-  }, []);
+    if (mode !== 'live') return;
+    liveJson<{ triangles: LossTriangle[] }>('/api/triangles').then(data => {
+      const byId: Record<string, LossTriangle> = {};
+      for (const t of data.triangles) byId[t.id] = t;
+      setTrianglesById(byId);
+    }).catch((e: Error) => setError(e.message));
+  }, [mode]);
+
+  const generateInsights = async () => {
+    const view = viewMode;
+    if (!live) {
+      const ms = sampleDelayMs();
+      setInsightState({ running: true, expectedMs: ms });
+      await wait(ms);
+      setInsights({ view, items: SAMPLE_INSIGHTS[view] });
+      setInsightState({ running: false, expectedMs: ms });
+      return;
+    }
+    setInsightState({ running: true, expectedMs: 8000 });
+    try {
+      const r = await liveJson<{ insights: string[]; latencyMs: number; model: string }>('/api/insights', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ view }),
+      });
+      setInsights({ view, items: r.insights, ms: r.latencyMs, model: r.model });
+      setInsightState({ running: false, expectedMs: 8000 });
+    } catch (e) {
+      setInsightState({ running: false, expectedMs: 8000, error: (e as Error).message });
+    }
+  };
+  const shown = insights?.view === viewMode ? insights : null;
 
   // Compute LDF comparison data from live triangles
   const devComparisonData = useMemo(() => {
@@ -127,6 +159,8 @@ export default function SegmentsPage() {
         </div>
       </div>
 
+      {error && <LiveError message={error} />}
+
       {/* LDF Comparison Chart */}
       <div className="rounded-xl p-6 mb-8"
         style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}>
@@ -176,36 +210,51 @@ export default function SegmentsPage() {
       {/* AI Insights */}
       <div className="rounded-xl p-6"
         style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}>
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
           <TrendingUp className="w-4 h-4" style={{ color: 'var(--color-accent-light)' }} />
           <h2 className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-            Cortex Segmentation Insights
+            Segmentation Insights
           </h2>
-          <span className="text-xs px-2 py-0.5 rounded-full ml-auto"
-            style={{ background: 'rgba(123,14,160,0.2)', color: 'var(--color-accent-light)' }}>
-            AI-generated
-          </span>
+          {shown && <AiSourceBadge live={live} feature={`AI_COMPLETE (${shown.model ?? 'model'})`} ms={shown.ms} />}
+          <button onClick={generateInsights} disabled={insightState.running || !mode}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
+            style={{ background: 'var(--color-accent)', color: 'white' }}>
+            <Sparkles className="w-3.5 h-3.5" />{shown ? 'Regenerate' : 'Generate insights'}
+          </button>
         </div>
-        <div className="space-y-3">
-          {AI_INSIGHTS[viewMode].map((insight, i) => (
-            <div key={i} className="flex gap-3">
-              <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-xs font-bold"
-                style={{ background: 'rgba(123,14,160,0.25)', color: 'var(--color-accent-light)' }}>
-                {i + 1}
+        {insightState.running && <Reasoning steps={INSIGHT_STEPS} expectedMs={insightState.expectedMs} />}
+        {insightState.error && <LiveError message={insightState.error} />}
+        {!insightState.running && shown && (
+          <div className="space-y-3">
+            {shown.items.map((insight, i) => (
+              <div key={i} className="flex gap-3">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-xs font-bold"
+                  style={{ background: 'rgba(123,14,160,0.25)', color: 'var(--color-accent-light)' }}>
+                  {i + 1}
+                </div>
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                  {insight}
+                </p>
               </div>
-              <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-                {insight}
-              </p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
+        {!insightState.running && !shown && !insightState.error && (
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            Compare the {viewMode === 'tier' ? 'vehicle tiers' : 'coverages'} in three short insights.
+          </p>
+        )}
         <div className="mt-4 px-4 py-3 rounded-lg flex items-start gap-2"
           style={{ background: 'rgba(41,181,232,0.08)', border: '1px solid rgba(41,181,232,0.2)' }}>
           <Info className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--color-snowflake)' }} />
           <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            Segmentation insights are generated by Snowflake Cortex by analyzing development factor distributions,
-            exposure volumes, and statistical significance tests across segment combinations. Navigate to the{' '}
-            <strong style={{ color: 'var(--color-snowflake)' }}>AI Agent</strong> to ask follow-up questions.
+            {live
+              ? <>Live: the app reads selected LDFs, ultimates, prior ultimates, and <code>v_anomalies</code> flags, then calls{' '}
+                  <strong style={{ color: 'var(--color-snowflake)' }}>AI_COMPLETE</strong> with bind variables and a structured response format.</>
+              : <>Sample mode: a scripted answer built from the bundled numbers. In Live mode the same panel calls{' '}
+                  <strong style={{ color: 'var(--color-snowflake)' }}>AI_COMPLETE</strong> on these facts in your account.</>}
+            {' '}AI text is for review by a qualified actuary, not a reserving conclusion. Ask follow-ups in the{' '}
+            <strong style={{ color: 'var(--color-snowflake)' }}>AI Agent</strong> screen.
           </p>
         </div>
       </div>

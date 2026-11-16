@@ -6,7 +6,10 @@ import { AGENT_RESPONSES, SUGGESTED_PROMPTS, matchResponseKey, type ResponseKey 
 import { TRIANGLES_BY_ID } from '@/lib/data';
 import type { ChatMessage } from '@/lib/types';
 import TriangleTable from './TriangleTable';
-import { HOSTED_EXAMPLE } from '@/lib/hosted';
+import { liveJson, useMode } from '@/lib/mode';
+import { sampleDelayMs, wait } from '@/lib/sample-timing';
+import { AiSourceBadge } from './AiBadges';
+import { AGENT_STEPS, Reasoning } from './Reasoning';
 import { cn } from '@/lib/utils';
 
 function renderMarkdown(text: string): React.ReactNode {
@@ -263,8 +266,13 @@ function MessageBubble({ message, isStreaming }: { message: ChatMessage; isStrea
         )}
 
         {/* The welcome message is pre-rendered, so its time legitimately differs from the browser's */}
-        <div className="mt-1 px-1 text-xs" style={{ color: 'var(--color-text-muted)' }} suppressHydrationWarning>
-          {isUser ? 'You' : HOSTED_EXAMPLE ? 'Scripted answer · sample data' : 'Cortex Agent'} · {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        <div className="mt-1 px-1 text-xs flex items-center gap-2 flex-wrap" style={{ color: 'var(--color-text-muted)' }} suppressHydrationWarning>
+          {isUser ? <span>You</span>
+            : message.source === 'live' ? <AiSourceBadge live feature="Cortex Agent" ms={message.latencyMs} />
+            : message.source === 'sample' ? <AiSourceBadge live={false} feature="" />
+            : message.source === 'error' ? <span style={{ color: 'var(--color-negative)' }}>Live call failed · no sample substituted</span>
+            : <span>Assistant</span>}
+          <span suppressHydrationWarning>{message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
       </div>
 
@@ -294,94 +302,51 @@ export default function ChatPanel() {
   }]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [streamingId, setStreamingId] = useState<string | null>(null);
-  const [streamedText, setStreamedText] = useState('');
+  const [expectedMs, setExpectedMs] = useState(6000);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { mode } = useMode();
+  const live = mode === 'live';
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamedText]);
+  }, [messages, isThinking]);
 
   const sendMessage = useCallback(async (text: string, responseKey?: ResponseKey) => {
-    if (!text.trim() || isThinking) return;
-
-    const userMsg: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: text,
-      timestamp: new Date(),
-    };
-    setMessages(prev => [...prev, userMsg]);
+    if (!text.trim() || isThinking || !mode) return;
+    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content: text, timestamp: new Date() }]);
     setInput('');
     setIsThinking(true);
 
-    let fullText: string;
-    let embeddedTriangleId: string | undefined;
-    let highlightCells: ChatMessage['highlightCells'];
-    let comparisonData: ChatMessage['comparisonData'];
-    let key: ResponseKey;
-
-    try {
-      // Try the API endpoint first (the hosted example has none, so it goes straight to the scripts)
-      if (HOSTED_EXAMPLE) throw new Error('No API in the hosted example');
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
-      });
-
-      if (!res.ok) throw new Error('API request failed');
-
-      const data = await res.json();
-      fullText = data.text;
-      embeddedTriangleId = data.embeddedTriangleId;
-      highlightCells = data.highlightCells;
-      comparisonData = data.comparisonData;
-      key = data.responseKey ?? 'free_form';
-    } catch {
-      // Fallback to local scripted responses
-      key = responseKey ?? matchResponseKey(text);
-      const response = AGENT_RESPONSES[key];
-      fullText = response.text;
-      embeddedTriangleId = response.embeddedTriangleId;
-      highlightCells = response.highlightCells;
-      comparisonData = response.comparisonData;
+    let reply: ChatMessage;
+    if (mode === 'live') {
+      // Live: the Cortex Agent plans, Cortex Analyst writes SQL over LOSS_TRIANGLE_SV, and the query
+      // runs on LOSS_TRIANGLE_WH. Errors are shown as errors, never replaced with a scripted answer.
+      setExpectedMs(12000);
+      try {
+        const data = await liveJson<{ text: string; latencyMs: number }>('/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text }),
+        });
+        reply = { id: (Date.now() + 1).toString(), role: 'assistant', content: data.text, timestamp: new Date(), source: 'live', latencyMs: data.latencyMs };
+      } catch (e) {
+        reply = { id: (Date.now() + 1).toString(), role: 'assistant', content: `**Live call failed.** ${(e as Error).message}`, timestamp: new Date(), source: 'error' };
+      }
+    } else {
+      // Sample: a scripted, keyword-matched answer after a realistic delay.
+      const ms = sampleDelayMs();
+      setExpectedMs(ms);
+      await wait(ms);
+      const key = responseKey ?? matchResponseKey(text);
+      const r = AGENT_RESPONSES[key];
+      reply = {
+        id: (Date.now() + 1).toString(), role: 'assistant', content: r.text, timestamp: new Date(),
+        embeddedTriangleId: r.embeddedTriangleId, highlightCells: r.highlightCells, comparisonData: r.comparisonData,
+        responseKey: key, source: 'sample',
+      };
     }
-
     setIsThinking(false);
-
-    // Simulate streaming for a natural UX
-    const assistantId = (Date.now() + 1).toString();
-    setStreamingId(assistantId);
-    setStreamedText('');
-
-    let charIdx = 0;
-    await new Promise<void>(resolve => {
-      const interval = setInterval(() => {
-        charIdx = Math.min(charIdx + 8, fullText.length);
-        setStreamedText(fullText.slice(0, charIdx));
-        if (charIdx >= fullText.length) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, 12);
-    });
-
-    setStreamingId(null);
-    setStreamedText('');
-    const finalMsg: ChatMessage = {
-      id: assistantId,
-      role: 'assistant',
-      content: fullText,
-      timestamp: new Date(),
-      embeddedTriangleId,
-      highlightCells,
-      comparisonData,
-      responseKey: key,
-    };
-    setMessages(prev => [...prev, finalMsg]);
-  }, [isThinking]);
+    setMessages(prev => [...prev, reply]);
+  }, [isThinking, mode]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -396,32 +361,17 @@ export default function ChatPanel() {
           <MessageBubble key={msg.id} message={msg} />
         ))}
 
-        {/* Thinking indicator */}
+        {/* Staged progress */}
         {isThinking && (
           <div className="flex gap-3 mb-6">
             <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ background: 'var(--color-accent)' }}>
               <Sparkles className="w-4 h-4 text-white" />
             </div>
-            <div className="rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2"
-              style={{ background: 'var(--color-surface-3)', border: '1px solid var(--color-border)' }}>
-              <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--color-accent-light)' }} />
-              <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Cortex is analyzing...</span>
+            <div className="w-full max-w-md">
+              <Reasoning steps={AGENT_STEPS} expectedMs={expectedMs} />
             </div>
           </div>
-        )}
-
-        {/* Streaming message */}
-        {streamingId && streamedText && (
-          <MessageBubble
-            message={{
-              id: streamingId,
-              role: 'assistant',
-              content: streamedText,
-              timestamp: new Date(),
-            }}
-            isStreaming
-          />
         )}
 
         <div ref={bottomRef} />

@@ -1,15 +1,15 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
 import ChatPanel from '@/components/ChatPanel';
 import { Sparkles } from 'lucide-react';
 import { Suspense } from 'react';
-import { HOSTED_EXAMPLE } from '@/lib/hosted';
+import { useMode } from '@/lib/mode';
 
 function ChatContent() {
+  const { mode } = useMode();
+  const live = mode === 'live';
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 45px)' }}>
       {/* Header */}
       <div className="px-8 py-5 border-b flex-shrink-0"
         style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface-1)' }}>
@@ -20,15 +20,17 @@ function ChatContent() {
           </div>
           <div>
             <h1 className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-              Cortex Actuarial Agent
+              Actuarial Assistant
             </h1>
             <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              Powered by Snowflake Cortex · claude-3-5-sonnet · Loss Triangle Specialist
+              Cortex Agent (LOSS_TRIANGLE_AGENT) with Cortex Analyst over the LOSS_TRIANGLE_SV semantic view
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full${HOSTED_EXAMPLE ? '' : ' animate-pulse'}`} style={{ background: HOSTED_EXAMPLE ? 'var(--color-text-muted)' : 'var(--color-positive)' }} />
-            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{HOSTED_EXAMPLE ? 'Scripted answers' : 'Connected'}</span>
+            <div className="w-2 h-2 rounded-full" style={{ background: live ? 'var(--color-positive)' : 'var(--color-warning)' }} />
+            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              {mode === undefined ? '' : live ? 'Live · answers from your Snowflake account' : 'Sample · scripted answers, matched by keyword'}
+            </span>
           </div>
         </div>
       </div>

@@ -8,6 +8,7 @@ function getConnectionConfig(): snowflake.ConnectionOptions {
   const database = process.env.SNOWFLAKE_DATABASE;
   const schema = process.env.SNOWFLAKE_SCHEMA ?? 'LOSS_TRIANGLES';
   const warehouse = process.env.SNOWFLAKE_WAREHOUSE;
+  const role = process.env.SNOWFLAKE_ROLE ?? 'LOSS_TRIANGLE_ROLE';
 
   if (!account || !username || !database || !warehouse) {
     throw new Error(
@@ -22,6 +23,7 @@ function getConnectionConfig(): snowflake.ConnectionOptions {
     database,
     schema,
     warehouse,
+    role,
   };
 
   // Auth priority: PAT (OAuth token) > external browser SSO > key-pair > password
@@ -97,3 +99,24 @@ export function isSnowflakeConfigured(): boolean {
     (process.env.SNOWFLAKE_TOKEN || process.env.SNOWFLAKE_BROWSER_AUTH === 'true' || process.env.SNOWFLAKE_PRIVATE_KEY_PATH || process.env.SNOWFLAKE_PASSWORD)
   );
 }
+
+// Live-mode error response. Routes never substitute sample data; the UI shows this message.
+export function liveError(error: unknown, status = 500) {
+  const message = error instanceof Error ? error.message : String(error);
+  return Response.json({ error: message }, { status });
+}
+
+export function notConfigured() {
+  return liveError('No Snowflake connection is configured. Copy .env.example to .env.local and restart.', 503);
+}
+
+// Fully qualified agent name from .env.local, validated so it can be inlined safely in SQL.
+export function agentName(): string {
+  const name = process.env.SNOWFLAKE_AGENT_NAME ?? 'LOSS_TRIANGLE_EXAMPLE.LOSS_TRIANGLES.LOSS_TRIANGLE_AGENT';
+  if (!/^[A-Za-z_][A-Za-z0-9_$]*(\.[A-Za-z_][A-Za-z0-9_$]*){0,2}$/.test(name)) {
+    throw new Error('SNOWFLAKE_AGENT_NAME must be a plain identifier such as DB.SCHEMA.AGENT.');
+  }
+  return name;
+}
+
+export const COMPLETE_MODEL = process.env.SNOWFLAKE_COMPLETE_MODEL ?? 'claude-sonnet-4-5';

@@ -1,23 +1,14 @@
-# GitHub Pages — Snowflake Loss Triangle Analysis
+# GitHub Pages: Loss Triangle Analysis
 
-This `/docs` folder contains the static showcase site.
+This `/docs` folder is the GitHub Pages site, served from the `main` branch, `/docs` folder at
+`https://sfc-gh-ooral.github.io/sfguide-loss-triangle-analysis/`.
 
-## Deployment
-
-GitHub Pages is configured to serve from the `main` branch, `/docs` folder:
-
-1. **Source:** `main` branch, `/docs` directory
-2. **URL:** `https://sfc-gh-ooral.github.io/sfguide-loss-triangle-analysis/`
-3. **`.nojekyll`** marker is included so GitHub serves the files as-is (no Jekyll processing)
-
-## Files
-
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| `index.html` | Self-contained showcase page with inline CSS, JS, and data. No build step or external dependencies. |
-| `.nojekyll` | Disables Jekyll processing on GitHub Pages |
-| `README.md` | This file |
+| `index.html` | Landing page. Inline CSS, no scripts, no external dependencies. |
+| `images/` | App screenshots used by the landing page (`npm run capture`). |
+| `catalog/` | 960×600 card images for the Snow Packs catalog (`npm run capture`). |
+| `try/` | Hosted no-account example (`npm run build:example`). |
+| `.nojekyll` | Serves folders that start with `_` as-is. |
 
-## Updating
-
-Edit `index.html` directly. The page is fully self-contained. Push to `main` and GitHub Pages redeploys automatically.
+After UI changes, run `npm run build:example`, then `npm run capture`, and review every image.

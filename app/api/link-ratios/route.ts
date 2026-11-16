@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import { executeQuery, isSnowflakeConfigured } from '@/lib/snowflake';
-import { ALL_TRIANGLES } from '@/lib/data';
-import { computeLinkRatios } from '@/lib/utils';
+import { executeQuery, isSnowflakeConfigured, liveError, notConfigured } from '@/lib/snowflake';
 
 interface LinkRatioRow {
   TRIANGLE_ID: string;
@@ -19,25 +17,14 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const triangleId = searchParams.get('triangleId');
 
-  if (!isSnowflakeConfigured() || !triangleId) {
-    const triangle = ALL_TRIANGLES.find(t => t.id === triangleId) ?? ALL_TRIANGLES[0];
-    const ratios = computeLinkRatios(triangle);
-    return NextResponse.json({ ratios, source: 'mock' });
-  }
+  if (!triangleId) return liveError('triangleId is required', 400);
+  if (!isSnowflakeConfigured()) return notConfigured();
 
   try {
     const { rows } = await executeQuery<LinkRatioRow>(
       'SELECT * FROM v_link_ratios WHERE triangle_id = ? ORDER BY dev_from, accident_year',
       [triangleId]
     );
-
-    if (rows.length === 0) {
-      const triangle = ALL_TRIANGLES.find(t => t.id === triangleId);
-      if (triangle) {
-        return NextResponse.json({ ratios: computeLinkRatios(triangle), source: 'mock' });
-      }
-      return NextResponse.json({ ratios: [], source: 'snowflake' });
-    }
 
     // Group by dev period
     const periodMap = new Map<string, {
@@ -68,11 +55,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ ratios: Array.from(periodMap.values()), source: 'snowflake' });
   } catch (error) {
-    console.error('Link ratios query failed:', error);
-    const triangle = ALL_TRIANGLES.find(t => t.id === triangleId);
-    if (triangle) {
-      return NextResponse.json({ ratios: computeLinkRatios(triangle), source: 'mock', error: String(error) });
-    }
-    return NextResponse.json({ ratios: [], source: 'mock', error: String(error) });
+    return liveError(error);
   }
 }

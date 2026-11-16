@@ -1,26 +1,47 @@
-# Snowflake Loss Triangle Analysis
+# Loss Triangle Analysis
 
-AI-powered actuarial loss triangle analysis built with [Snowflake Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents). A five-screen Next.js application for property-casualty reserve analysis: portfolio dashboard, AI-powered Q&A, triangle explorer, segment comparison, and consistency testing.
+Help P&C reserving teams spot unusual loss development before quarter-close. The app shows chain-ladder paid loss
+triangles, flags link ratios outside 1.5 standard deviations, answers questions with a Cortex Agent, and drafts
+segment insights with AI_COMPLETE.
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+This is a Snowflake example on **synthetic data**: a Next.js app with a no-account Sample mode and a Live mode backed by
+Snowflake views, a Cortex Agent (Cortex Analyst over a semantic view), and `AI_COMPLETE`.
 
-## Features
+**[Try the hosted example](https://sfc-gh-ooral.github.io/sfguide-loss-triangle-analysis/try/)** · **[Guide](https://sfc-gh-ooral.github.io/sfguide-loss-triangle-analysis/)**
 
-| Screen | Description |
-|--------|-------------|
-| **Dashboard** | Portfolio KPIs, development trend chart, reserve waterfall, anomaly alerts |
-| **AI Agent** | Chat with a Cortex Agent — ask it to generate triangles, flag anomalies, recommend segmentation, or explain development patterns |
-| **Triangle Explorer** | Interactive heatmap triangles with link ratios, CDFs, and ultimates across 5 triangles |
-| **Segment Analysis** | Compare coverage types or vehicle tiers side-by-side with LDF bar charts and AI-generated insights |
-| **Consistency Test** | Apply uniform selection rules across all segments and measure reserve impact vs. prior carried values |
+> Synthetic data and illustrative chain-ladder logic only. This is not actuarial, reserving, or regulatory advice.
+> AI-generated text needs review by a qualified actuary.
 
-## Try It in Your Browser
+## What it does
 
-**[Open the hosted example](https://sfc-gh-ooral.github.io/sfguide-loss-triangle-analysis/try/)**: no account, install, or sign-in. It runs entirely in your browser on built-in synthetic triangles, and chat answers are scripted rather than live Cortex Agent output.
+| Screen | What you see | Snowflake capability (Live mode) |
+| --- | --- | --- |
+| Dashboard | Reported, IBNR, and ultimate KPIs, collision paid development by accident year, prior-to-current reserve bridge, anomaly flags | Views `V_PORTFOLIO_KPIS`, `V_RESERVE_WATERFALL`, `V_ANOMALIES` (a SQL rule, not a model) |
+| AI Agent | Ask questions about triangles, IBNR, segments, and anomalies; staged progress steps; measured latency on live answers | Cortex Agent `LOSS_TRIANGLE_AGENT` with Cortex Analyst over semantic view `LOSS_TRIANGLE_SV`, running on `LOSS_TRIANGLE_WH` |
+| Triangle Explorer | Five 8×8 paid triangles with link ratios, 3- and 5-year averages, selected LDFs, CDFs, ultimates, and IBNR | Tables `PAID_LOSS_TRIANGLES`, `SELECTED_FACTORS`, `TAIL_FACTORS` |
+| Segment Analysis | Coverage or vehicle-tier comparison, LDF bar chart, side-by-side triangles, and three AI-drafted insights | `AI_COMPLETE` with bind variables and structured output, on facts read from the views |
+| Consistency Test | One set of selection rules applied to every triangle, compared with prior carried ultimates | Chain-ladder recalculation in the browser on triangles loaded from Snowflake; no AI |
+| Sample / Live switch | Header switch that shows which mode is on. Sample keeps the bundled data even with a connection; Live with no connection shows setup steps instead of asking for credentials | `/api/mode` reports whether `.env.local` is configured; live calls never fall back to sample data |
 
-## Quick Start (Mock Data)
+### Story on this synthetic data set
 
-The app runs immediately with built-in mock data — no Snowflake connection required:
+On the three overall triangles, reported paid is $3,320.3M, IBNR $382.2M, and ultimate $3,702.5M, up $110.9M (3.1%)
+from prior. The anomaly rule flags 16 link ratios across the five triangles; 15 are in AY 2020 (a low first year, then a
+fast catch-up). Collision Tier 1 develops more than Tier 2 at every early age (12→24 selected LDF 1.423 vs. 1.318).
+Sample mode reproduces these numbers exactly; they are the same values `sql/setup.sql` loads.
+
+## Prerequisites
+
+| | |
+| --- | --- |
+| Sample mode | Node.js **20.19+ or 22.12+** (required by Tailwind CSS 4) and npm. Nothing else. |
+| Live mode: edition | Any edition with Cortex AI. Tested on Enterprise Edition; no Enterprise-only feature is used. |
+| Live mode: features | Cortex Agents, Cortex Analyst, semantic views, and `AI_COMPLETE`. The default model for insights is `claude-sonnet-4-5`; if it isn't available in your region, enable [cross-region inference](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cross-region-inference) or set `SNOWFLAKE_COMPLETE_MODEL`. The agent's orchestration model is `auto` (chosen by Snowflake). |
+| Live mode: role | `ACCOUNTADMIN` for the short account-level block in `sql/setup.sql` (create the role, grant `SNOWFLAKE.CORTEX_USER`). Objects are created as `SYSADMIN`. The app connects as the read-only `LOSS_TRIANGLE_ROLE`. |
+| Preview features | None. |
+| Tested | Next.js 16.3, Node 22.23, snowflake-sdk 3.4, on an Enterprise account in AWS US East 1, November 2026 |
+
+## Quick start: no account
 
 ```bash
 git clone https://github.com/sfc-gh-ooral/sfguide-loss-triangle-analysis.git
@@ -29,168 +50,117 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). All five screens work with realistic simulated data.
+Open http://localhost:3000. With no `.env.local`, the app uses the bundled synthetic triangles, and every AI output is
+labeled **Sample AI response**. Scripted answers arrive after 4 to 8 seconds with the same progress steps as a live call.
 
-## Deploy with Live Snowflake Data
+## Live mode: deploy to your account
 
-### Step 1: Create the database
+1. **Run the setup.** In a Snowsight SQL worksheet, paste [`sql/setup.sql`](sql/setup.sql) and run all, then do the same
+   with [`sql/cortex-agent.sql`](sql/cortex-agent.sql). No edits or find-and-replace. The second script ends with a test
+   question to the agent, run as `LOSS_TRIANGLE_ROLE`.
+2. **Create a key pair** for the user that ran setup (setup grants that user `LOSS_TRIANGLE_ROLE`). Keep the key outside
+   the repository:
 
-```sql
-CREATE DATABASE IF NOT EXISTS LOSS_TRIANGLE_DEMO;
-USE DATABASE LOSS_TRIANGLE_DEMO;
+   ```bash
+   mkdir -p ~/.snowflake/keys
+   openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out ~/.snowflake/keys/loss_triangle_key.p8 -nocrypt
+   openssl rsa -in ~/.snowflake/keys/loss_triangle_key.p8 -pubout
+   ```
+
+   ```sql
+   -- Uses the second key slot so an existing key is not replaced. Check DESC USER first.
+   ALTER USER <YOUR_USER> SET RSA_PUBLIC_KEY_2 = '<public key body without header lines>';
+   ```
+
+3. **Configure the app.** Copy `.env.example` to `.env.local` (gitignored) and fill in your account identifier
+   (`<org>-<account>`), user, and key path. The database, schema, warehouse, role, and agent names are already set.
+4. **Run it.** Run `npm run dev`. The header switch defaults to **Live**. AI outputs carry **Powered by … (live)** badges
+   with the measured latency. If a live call fails, the screen shows the error; it never substitutes sample data.
+
+The app connects as `LOSS_TRIANGLE_ROLE` and uses bind variables for every user-supplied value.
+
+### Objects created
+
+| Object | Name | Notes |
+| --- | --- | --- |
+| Role | `LOSS_TRIANGLE_ROLE` | Read-only: USAGE on the warehouse, database, and schema; SELECT on tables, views, and the semantic view; USAGE on the agent; `SNOWFLAKE.CORTEX_USER`. Granted to you and to SYSADMIN. |
+| Warehouse | `LOSS_TRIANGLE_WH` | XSMALL, `AUTO_SUSPEND = 60`, `AUTO_RESUME`, starts suspended |
+| Database, schema | `LOSS_TRIANGLE_EXAMPLE.LOSS_TRIANGLES` | Owned by SYSADMIN |
+| Tables | `PAID_LOSS_TRIANGLES` (204 rows), `SELECTED_FACTORS` (35), `TAIL_FACTORS` (5), `PRIOR_ULTIMATES` (40) | Synthetic, deterministic seed data |
+| Views | `V_LINK_RATIOS`, `V_CDFS`, `V_ULTIMATES`, `V_PORTFOLIO_KPIS`, `V_RESERVE_WATERFALL`, `V_ANOMALIES` | The chain-ladder logic, readable as SQL |
+| Semantic view | `LOSS_TRIANGLE_SV` | Paid losses, ultimates, and anomaly flags for Cortex Analyst |
+| Cortex Agent | `LOSS_TRIANGLE_AGENT` | One tool: Cortex Analyst on `LOSS_TRIANGLE_SV`, executing on `LOSS_TRIANGLE_WH` |
+
+Setup changes nothing that already exists.
+
+**Cleanup:** run [`sql/cleanup.sql`](sql/cleanup.sql). It drops the database (with its tables, views, semantic view, and
+agent), the warehouse, and the role. If you registered a key only for this example, also run
+`ALTER USER <YOUR_USER> UNSET RSA_PUBLIC_KEY_2;`.
+
+### Expected cost and time
+
+Measured in our test on XSMALL, November 2026. Yours will differ.
+
+- **Setup:** `sql/setup.sql` about 24 s and `sql/cortex-agent.sql` about 8 s (including its test question).
+- **Warehouse:** setup run three times plus a session of about 230 queries (all screens, 10 agent questions, several
+  insight generations) used **0.32 credits**.
+- **Cortex Agent:** 9 agent requests used **0.94 Cortex credits**, about 0.1 per question.
+- **AI_COMPLETE:** billed by tokens; each insight call sends a short prompt (well under 1,000 tokens). Check
+  `SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY` and `CORTEX_AGENT_USAGE_HISTORY` for your usage; those views
+  can lag by a few hours. See the [Service Consumption Table](https://www.snowflake.com/legal-files/CreditConsumptionTable.pdf) for rates.
+- **Measured latency** from the app server: data screens 0.2–3.5 s (first call includes connecting), segment insights
+  7–9 s, agent answers 25–33 s.
+
+## Known limitations
+
+- **Sample answers are scripted.** In Sample mode, chat answers are matched by keyword to eight scripted answers, so an
+  off-script question gets the closest one. They're labeled **Sample AI response**.
+- **Small, paid-only data.** Five 8×8 paid triangles (AY 2017–2024, 12–96 months): collision overall, Tier 1, Tier 2,
+  comprehensive, and liability. No incurred losses, case reserves, claim counts, exposures, or premium.
+- **Chain-ladder only.** Selected LDFs and tail factors are fixed inputs. No Bornhuetter-Ferguson, Cape Cod, Mack, or
+  bootstrap methods, and no tail fitting.
+- **Totals use the overall triangles.** Tier 1 and Tier 2 split collision overall, so portfolio totals add only the three
+  overall triangles. Projected separately, the two tiers sum to $2,104.9M versus $2,100.6M for collision overall.
+- **Synthetic prior ultimates.** Prior ultimates were set at 97% of current, so every triangle shows about +3.1% versus prior.
+- **The anomaly flag is a simple rule.** `V_ANOMALIES` flags link ratios more than 1.5 sample standard deviations from the
+  period mean. It's computed in SQL, not by a Cortex model, and on this data 15 of its 16 flags are AY 2020.
+- **The Consistency Test runs in the browser.** It recomputes ultimates from the loaded triangles; it doesn't write back.
+- **Live AI answers vary run to run and can be wrong.** In testing, `AI_COMPLETE` once described a higher LDF as faster
+  development until the prompt defined the term. Review every AI statement against the triangles.
+
+## Customize with Cortex Code
+
+- "Explain this pack's tables and views, then map them to my claims warehouse's paid and incurred triangles. Propose the
+  least-privilege grants and a validation plan before changing any objects."
+- "Add an incurred-loss triangle and a Bornhuetter-Ferguson ultimate next to chain-ladder in `sql/setup.sql`, extend
+  `LOSS_TRIANGLE_SV` so the agent can compare the two methods, and update the Triangle Explorer."
+- "Tune the anomaly rule in `V_ANOMALIES` for my volumes: compare 1.5σ, 2σ, and an ex-high-low rule on my triangles and
+  explain the trade-offs in false flags."
+
+## Project layout
+
+```text
+app/                  Next.js App Router pages and /api routes (server-side Snowflake calls)
+components/           Sidebar, ModeChip (Sample/Live), Reasoning (staged steps), AiBadges, ChatPanel, TriangleTable
+lib/data.ts           Bundled synthetic triangles (identical to sql/setup.sql)
+lib/responses.ts      Scripted Sample-mode chat answers
+lib/anomalies.ts      Same 1.5σ rule as V_ANOMALIES, for Sample mode
+lib/mode.ts           Sample/Live choice and live fetch (no fallback)
+lib/snowflake.ts      Connection, bind variables, role, agent name validation
+sql/                  setup.sql, cortex-agent.sql, cleanup.sql
+scripts/              build-hosted-example.mjs, capture-screenshots.mjs, verify-live.mjs
+docs/                 GitHub Pages guide, screenshots, catalog cards, and the /try/ static example
 ```
 
-### Step 2: Run the setup script
+`npm run build:example` builds the static, no-account example into `docs/try/`. `npm run capture` serves it locally and
+captures `docs/images/*.png` (1600×1000) and `docs/catalog/*.jpg` (960×600) with headless Chromium
+(`npx playwright install chromium` the first time). `node scripts/verify-live.mjs` clicks through every screen against
+`next start -p 3100` in Live mode.
 
-Open a **Snowsight SQL Worksheet**, paste the contents of [`sql/setup.sql`](sql/setup.sql), and execute. This creates:
+## License and disclaimer
 
-- **Schema:** `LOSS_TRIANGLES`
-- **Tables:** `paid_loss_triangles` (204 rows), `selected_factors` (35), `tail_factors` (5), `prior_ultimates` (40)
-- **Views:** `v_link_ratios`, `v_cdfs`, `v_ultimates`, `v_portfolio_kpis`, `v_reserve_waterfall`, `v_anomalies`
+[Apache 2.0](LICENSE). This is an illustrative example provided as is. It is not an official Snowflake product and is not
+supported by Snowflake Support. It contains no customer data and is not actuarial, reserving, or regulatory advice.
+Review and test before any production use. See also [LEGAL.md](LEGAL.md).
 
-### Step 3: Create the Cortex Agent (optional)
-
-Paste the contents of [`sql/cortex-agent.sql`](sql/cortex-agent.sql) into Snowsight and execute. This creates:
-
-- **Semantic View:** `LOSS_TRIANGLE_SV` — tells the agent how to interpret the loss triangle data
-- **Cortex Agent:** `LOSS_TRIANGLE_AGENT` — answers actuarial questions using the semantic view
-
-> Requires Cortex Agents to be enabled in your account. If unavailable, the app still works — the chat page falls back to scripted responses.
-
-### Step 4: Set up authentication
-
-Key-pair authentication is recommended:
-
-```bash
-# Generate an RSA key pair
-openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
-
-# Extract the public key (copy the output without header/footer lines)
-openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
-cat rsa_key.pub
-```
-
-Register the public key in Snowflake:
-
-```sql
-ALTER USER your_username SET RSA_PUBLIC_KEY='MIIBIjANBg...your_key_here...';
-```
-
-### Step 5: Configure and launch
-
-```bash
-cp .env.example .env.local
-```
-
-Edit `.env.local` with your Snowflake account details:
-
-```bash
-SNOWFLAKE_ACCOUNT=your_account_locator       # e.g., xy12345.us-east-1
-SNOWFLAKE_USERNAME=your_username
-SNOWFLAKE_DATABASE=LOSS_TRIANGLE_DEMO
-SNOWFLAKE_SCHEMA=LOSS_TRIANGLES
-SNOWFLAKE_WAREHOUSE=COMPUTE_WH
-SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/rsa_key.p8
-SNOWFLAKE_AGENT_NAME=LOSS_TRIANGLE_DEMO.LOSS_TRIANGLES.LOSS_TRIANGLE_AGENT
-```
-
-```bash
-npm install
-npm run dev
-```
-
-The sidebar indicator shows **Live Data** when connected to Snowflake.
-
-## Connecting Your Own Data
-
-The app expects four tables in the schema specified by `SNOWFLAKE_SCHEMA`. Replace the seed data with your own claims data matching these schemas:
-
-| Table | Key Columns | Description |
-|-------|-------------|-------------|
-| `paid_loss_triangles` | `triangle_id`, `accident_year`, `dev_month`, `cumulative_paid` | Cumulative paid losses by triangle, accident year, and development month. Also includes `triangle_name`, `coverage`, `segment`, `eval_date`. |
-| `selected_factors` | `triangle_id`, `dev_period_from`, `dev_period_to`, `selected_ldf` | Actuarially selected link development factors per development period. |
-| `tail_factors` | `triangle_id`, `tail_factor` | Tail factor for extrapolation beyond observed development. |
-| `prior_ultimates` | `triangle_id`, `accident_year`, `prior_ultimate` | Prior year's reserve estimates by triangle and accident year (for comparison). |
-
-The six analytical views (`v_link_ratios`, `v_cdfs`, `v_ultimates`, `v_portfolio_kpis`, `v_reserve_waterfall`, `v_anomalies`) are created by `setup.sql` and compute all derived metrics from these base tables.
-
-## Architecture
-
-| Layer | Components |
-|-------|------------|
-| **Cortex Agent** | Actuarial Q&A agent with Cortex Analyst text-to-SQL via Semantic View |
-| **Core Data** | Paid loss tables, computed views (link ratios, CDFs, ultimates), XS warehouse |
-| **Application** | Next.js 16, snowflake-sdk (Node.js), Recharts, Framer Motion |
-
-## API Routes
-
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/api/triangles` | GET | All triangle data with link ratios, CDFs, ultimates |
-| `/api/kpis` | GET | Portfolio KPIs (reported, IBNR, ultimate, prior comparison) |
-| `/api/waterfall` | GET | Reserve waterfall (prior to current bridge) |
-| `/api/link-ratios` | GET | Link ratios for a specific triangle (`?triangleId=...`) |
-| `/api/ultimates` | GET | Ultimates for a specific triangle (`?triangleId=...`) |
-| `/api/prior-ultimates` | GET | Prior ultimates by triangle (for consistency testing) |
-| `/api/chat` | POST | Send a message to the Cortex Agent |
-
-Each route falls back to mock data when Snowflake is not configured.
-
-### Rebuild the Hosted Example
-
-`npm run build:example` exports a static build that keeps the built-in sample data and scripted chat answers instead of calling the API routes, and writes it to `docs/try/`, which GitHub Pages serves. Run it after changing the app and commit `docs/try/`.
-
-## Project Structure
-
-```
-sfguide-loss-triangle-analysis/
-├── app/
-│   ├── page.tsx                  # Portfolio dashboard
-│   ├── chat/page.tsx             # AI Agent chat
-│   ├── triangles/page.tsx        # Triangle explorer
-│   ├── segments/page.tsx         # Segment comparison
-│   ├── consistency/page.tsx      # Consistency testing
-│   └── api/                      # API routes (7 endpoints)
-├── components/
-│   ├── ChatPanel.tsx             # Chat UI with streaming + embedded tables
-│   ├── TriangleTable.tsx         # Interactive triangle heatmap
-│   └── Sidebar.tsx               # Navigation sidebar
-├── lib/
-│   ├── snowflake.ts              # Snowflake connection + query helper
-│   ├── data.ts                   # Mock data (fallback when Snowflake not configured)
-│   ├── types.ts                  # TypeScript interfaces
-│   ├── utils.ts                  # Link ratio computation, formatting
-│   ├── hosted.ts                 # Hosted-example flag (static build, no API routes)
-│   └── responses.ts              # Scripted agent responses (fallback)
-├── sql/
-│   ├── setup.sql                 # Schema, tables, views, seed data
-│   └── cortex-agent.sql          # Semantic View + Cortex Agent DDL
-├── docs/
-│   ├── index.html                # Landing page (GitHub Pages)
-│   └── try/                      # Hosted example (generated by npm run build:example)
-├── scripts/
-│   └── build-hosted-example.mjs
-├── .env.example                  # Environment variable template
-├── LICENSE                       # Apache 2.0
-└── LEGAL.md                      # Snowflake legal disclaimer
-```
-
-## Actuarial Notes
-
-- **Method:** Chain-ladder (volume-weighted) with tail factor extrapolation
-- **Data:** Cumulative paid losses in $M, 8x8 triangles (AY 2017-2024, dev months 12-96)
-- **Anomaly detection:** Link ratios flagged at >1.5 standard deviations from the period mean
-- **COVID impact:** AY 2020 shows depressed 12-month emergence with sharp 12-to-24 catch-up
-- **Social inflation:** Liability line shows elevated late-period development in recent AYs
-
-## Tech Stack
-
-- **Frontend:** Next.js 16.3, React 19, Tailwind CSS v4, Recharts, Framer Motion
-- **Backend:** Next.js API routes, snowflake-sdk (Node.js driver)
-- **AI:** Snowflake Cortex Agents, Cortex Analyst (text-to-SQL via Semantic View)
-- **Data:** Snowflake tables and computed views
-
-## Legal
-
-- Licensed under [Apache 2.0](LICENSE)
-- See [LEGAL.md](LEGAL.md)
+Owner: Oz Oral · Last reviewed: November 2026

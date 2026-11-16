@@ -45,6 +45,8 @@ export interface ChatMessage {
   highlightCells?: Array<{ ayIdx: number; devIdx: number; type: 'highlight' | 'anomaly' }>;
   comparisonData?: ComparisonRow[];
   responseKey?: string; // which scripted response this is
+  source?: 'sample' | 'live' | 'error'; // where an assistant message came from; undefined for the intro
+  latencyMs?: number; // measured round trip for live answers
 }
 
 export interface ComparisonRow {

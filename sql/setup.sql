@@ -1,10 +1,20 @@
 -- ============================================================================
--- Loss Triangle Actuarial Analysis — Snowflake Setup Script
+-- Loss Triangle Analysis: Snowflake setup (part 1 of 2)
+-- Synthetic data and illustrative chain-ladder logic only. Not actuarial,
+-- reserving, or regulatory advice.
 -- ============================================================================
--- Schema  : LOSS_TRIANGLES
--- Purpose : Creates tables, seed data, and analytical views for paid loss
---           triangle analysis using the chain-ladder (volume-weighted)
---           development method.
+-- Run top to bottom in a Snowsight SQL worksheet (under a minute on XSMALL),
+-- then run sql/cortex-agent.sql. No edits or find-and-replace needed.
+--
+-- Requires a role that can create roles and grant SNOWFLAKE.CORTEX_USER
+-- (ACCOUNTADMIN, or USERADMIN + SECURITYADMIN) and SYSADMIN for objects.
+--
+-- Creates (and sql/cleanup.sql drops):
+--   role       LOSS_TRIANGLE_ROLE   read-only app role, granted to you
+--   warehouse  LOSS_TRIANGLE_WH     XSMALL, AUTO_SUSPEND = 60, starts suspended
+--   database   LOSS_TRIANGLE_EXAMPLE, schema LOSS_TRIANGLES
+--   4 tables, 6 views (below); the semantic view and agent come in part 2
+-- It changes nothing that already exists.
 --
 -- Triangles included:
 --   1. collision-overall    (Collision — All tiers)
@@ -20,10 +30,29 @@
 -- ============================================================================
 
 -- --------------------------------------------------------------------------
--- 1. SCHEMA
+-- 0. ACCOUNT-LEVEL OBJECTS: least-privilege role for the app
 -- --------------------------------------------------------------------------
-CREATE SCHEMA IF NOT EXISTS LOSS_TRIANGLES;
-USE SCHEMA LOSS_TRIANGLES;
+USE ROLE ACCOUNTADMIN;
+CREATE ROLE IF NOT EXISTS LOSS_TRIANGLE_ROLE
+  COMMENT = 'Loss Triangle Analysis example: read-only app role';
+GRANT ROLE LOSS_TRIANGLE_ROLE TO ROLE SYSADMIN;
+SET my_user = CURRENT_USER();
+GRANT ROLE LOSS_TRIANGLE_ROLE TO USER IDENTIFIER($my_user);
+-- Cortex Agents, Cortex Analyst, and AI_COMPLETE
+GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE LOSS_TRIANGLE_ROLE;
+
+-- --------------------------------------------------------------------------
+-- 1. WAREHOUSE, DATABASE, SCHEMA (owned by SYSADMIN)
+-- --------------------------------------------------------------------------
+USE ROLE SYSADMIN;
+CREATE WAREHOUSE IF NOT EXISTS LOSS_TRIANGLE_WH
+  WAREHOUSE_SIZE = XSMALL AUTO_SUSPEND = 60 AUTO_RESUME = TRUE INITIALLY_SUSPENDED = TRUE
+  COMMENT = 'Loss Triangle Analysis example';
+CREATE DATABASE IF NOT EXISTS LOSS_TRIANGLE_EXAMPLE
+  COMMENT = 'Loss Triangle Analysis example (synthetic data)';
+CREATE SCHEMA IF NOT EXISTS LOSS_TRIANGLE_EXAMPLE.LOSS_TRIANGLES;
+USE WAREHOUSE LOSS_TRIANGLE_WH;
+USE SCHEMA LOSS_TRIANGLE_EXAMPLE.LOSS_TRIANGLES;
 
 -- --------------------------------------------------------------------------
 -- 2. TABLES
@@ -537,25 +566,33 @@ ORDER BY d.triangle_id, d.accident_year;
 -- --------------------------------------------------------------------------
 -- 10. VIEW — V_PORTFOLIO_KPIS  (Portfolio-level summary)
 -- --------------------------------------------------------------------------
+-- Portfolio totals use the three "overall" triangles (collision,
+-- comprehensive, liability). The Tier 1 / Tier 2 collision triangles split
+-- collision overall, so adding them would double-count.
 
 CREATE OR REPLACE VIEW v_portfolio_kpis AS
 WITH current_totals AS (
     SELECT
-        SUM(reported_loss)  AS total_reported,
-        SUM(ibnr)           AS total_ibnr,
-        SUM(ultimate_loss)  AS total_ultimate,
-        COUNT(DISTINCT triangle_id) AS active_triangles
-    FROM v_ultimates
+        SUM(u.reported_loss)  AS total_reported,
+        SUM(u.ibnr)           AS total_ibnr,
+        SUM(u.ultimate_loss)  AS total_ultimate
+    FROM v_ultimates u
+    JOIN (SELECT DISTINCT triangle_id, segment FROM paid_loss_triangles) t
+      ON t.triangle_id = u.triangle_id
+    WHERE t.segment = 'overall'
 ),
 prior_totals AS (
-    SELECT SUM(prior_ultimate) AS prior_total_ultimate
-    FROM prior_ultimates
+    SELECT SUM(p.prior_ultimate) AS prior_total_ultimate
+    FROM prior_ultimates p
+    JOIN (SELECT DISTINCT triangle_id, segment FROM paid_loss_triangles) t
+      ON t.triangle_id = p.triangle_id
+    WHERE t.segment = 'overall'
 )
 SELECT
-    ROUND(ct.total_reported, 2)                         AS total_reported,
-    ROUND(ct.total_ibnr, 2)                             AS total_ibnr,
+    ROUND(ct.total_reported, 2)                          AS total_reported,
+    ROUND(ct.total_ibnr, 2)                              AS total_ibnr,
     ROUND(ct.total_ultimate, 2)                          AS total_ultimate,
-    ct.active_triangles,
+    (SELECT COUNT(DISTINCT triangle_id) FROM paid_loss_triangles) AS active_triangles,
     '2024-12-31'::DATE                                   AS eval_date,
     ROUND(pt.prior_total_ultimate, 2)                    AS prior_total_ultimate,
     ROUND(ct.total_ultimate - pt.prior_total_ultimate, 2) AS change_from_prior,
@@ -567,74 +604,29 @@ CROSS JOIN prior_totals pt;
 -- --------------------------------------------------------------------------
 -- 11. VIEW — V_RESERVE_WATERFALL
 -- --------------------------------------------------------------------------
--- Simplified reserve-change waterfall from prior to current estimate.
+-- Prior-to-current bridge on the three "overall" triangles, split by
+-- accident-year group. The steps add up exactly to the current estimate.
 
 CREATE OR REPLACE VIEW v_reserve_waterfall AS
-WITH
--- Sum of prior ultimates = starting point
-prior_carried AS (
-    SELECT SUM(prior_ultimate) AS amount FROM prior_ultimates
-),
--- Current ultimates by triangle/AY
-curr AS (
-    SELECT triangle_id, accident_year, ultimate_loss, ibnr
-    FROM v_ultimates
-),
--- Current total
-current_estimate AS (
-    SELECT SUM(ultimate_loss) AS amount FROM curr
-),
--- Development on recent AYs (2022+, excluding brand-new 2024)
-recent_development AS (
-    SELECT
-        SUM(u.ultimate_loss - p.prior_ultimate) AS amount
+WITH by_ay AS (
+    SELECT u.accident_year, u.ultimate_loss, p.prior_ultimate
     FROM v_ultimates u
     JOIN prior_ultimates p
-      ON  p.triangle_id  = u.triangle_id
+      ON  p.triangle_id   = u.triangle_id
       AND p.accident_year = u.accident_year
-    WHERE u.accident_year BETWEEN 2022 AND 2023
-),
--- New year emergence (AY 2024 ultimate)
-new_year AS (
-    SELECT SUM(ultimate_loss) AS amount
-    FROM v_ultimates
-    WHERE accident_year = 2024
-),
--- Prior AY 2024 ultimates (for netting)
-prior_new_year AS (
-    SELECT SUM(prior_ultimate) AS amount
-    FROM prior_ultimates
-    WHERE accident_year = 2024
-),
--- Favorable run-off on mature AYs (2017-2021)
-favorable_runoff AS (
-    SELECT
-        SUM(u.ultimate_loss - p.prior_ultimate) AS amount
-    FROM v_ultimates u
-    JOIN prior_ultimates p
-      ON  p.triangle_id  = u.triangle_id
-      AND p.accident_year = u.accident_year
-    WHERE u.accident_year BETWEEN 2017 AND 2021
-),
--- Tail revision: difference if tail factors deviate from a 1.015 baseline
-tail_revision AS (
-    SELECT
-        SUM(u.reported_loss * (tf.tail_factor - 1.015) / tf.tail_factor) AS amount
-    FROM v_ultimates u
-    JOIN tail_factors tf ON tf.triangle_id = u.triangle_id
+    JOIN (SELECT DISTINCT triangle_id, segment FROM paid_loss_triangles) t
+      ON t.triangle_id = u.triangle_id
+    WHERE t.segment = 'overall'
 )
-SELECT 1 AS sort_order, 'Prior Carried'        AS category, ROUND(amount, 1) AS amount FROM prior_carried
+SELECT 1 AS sort_order, 'Prior Carried' AS category, ROUND(SUM(prior_ultimate), 1) AS amount FROM by_ay
 UNION ALL
-SELECT 2, 'Recent AY Development (2022-2023)',  ROUND(amount, 1) FROM recent_development
+SELECT 2, 'Mature AYs 2017-2021', ROUND(SUM(IFF(accident_year <= 2021, ultimate_loss - prior_ultimate, 0)), 1) FROM by_ay
 UNION ALL
-SELECT 3, 'New Year Emergence (AY 2024)',        ROUND(amount - COALESCE(pny.amount, 0), 1)
-  FROM new_year CROSS JOIN prior_new_year pny
+SELECT 3, 'AY 2022-2023 Development', ROUND(SUM(IFF(accident_year IN (2022, 2023), ultimate_loss - prior_ultimate, 0)), 1) FROM by_ay
 UNION ALL
-SELECT 4, 'Tail Revision vs 1.015 Baseline',    ROUND(amount, 1) FROM tail_revision
+SELECT 4, 'AY 2024 Emergence', ROUND(SUM(IFF(accident_year = 2024, ultimate_loss - prior_ultimate, 0)), 1) FROM by_ay
 UNION ALL
-SELECT 5, 'Favorable Run-off (2017-2021)',       ROUND(amount, 1) FROM favorable_runoff
-UNION ALL
-SELECT 6, 'Current Estimate',                   ROUND(amount, 1) FROM current_estimate
+SELECT 5, 'Current Estimate', ROUND(SUM(ultimate_loss), 1) FROM by_ay
 ORDER BY sort_order;
 
 -- --------------------------------------------------------------------------
@@ -709,3 +701,14 @@ SELECT * FROM v_portfolio_kpis;
 
 SELECT '--- Reserve Waterfall ---' AS label;
 SELECT * FROM v_reserve_waterfall;
+
+-- --------------------------------------------------------------------------
+-- 14. READ-ONLY GRANTS for LOSS_TRIANGLE_ROLE
+-- --------------------------------------------------------------------------
+GRANT USAGE ON WAREHOUSE LOSS_TRIANGLE_WH TO ROLE LOSS_TRIANGLE_ROLE;
+GRANT USAGE ON DATABASE LOSS_TRIANGLE_EXAMPLE TO ROLE LOSS_TRIANGLE_ROLE;
+GRANT USAGE ON SCHEMA LOSS_TRIANGLE_EXAMPLE.LOSS_TRIANGLES TO ROLE LOSS_TRIANGLE_ROLE;
+GRANT SELECT ON ALL TABLES IN SCHEMA LOSS_TRIANGLE_EXAMPLE.LOSS_TRIANGLES TO ROLE LOSS_TRIANGLE_ROLE;
+GRANT SELECT ON ALL VIEWS  IN SCHEMA LOSS_TRIANGLE_EXAMPLE.LOSS_TRIANGLES TO ROLE LOSS_TRIANGLE_ROLE;
+
+-- Next: run sql/cortex-agent.sql for the semantic view and Cortex Agent.

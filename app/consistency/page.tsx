@@ -5,7 +5,8 @@ import { ALL_TRIANGLES, TRIANGLES_BY_ID } from '@/lib/data';
 import { computeLinkRatios } from '@/lib/utils';
 import type { LossTriangle } from '@/lib/types';
 import { CheckSquare, Play, Info, TrendingUp, TrendingDown, RotateCcw } from 'lucide-react';
-import { HOSTED_EXAMPLE } from '@/lib/hosted';
+import { liveJson, useMode } from '@/lib/mode';
+import { LiveError } from '@/components/AiBadges';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 type LDFMethod = 'vol-wtd-3yr' | 'vol-wtd-5yr' | 'simple-3yr' | 'simple-5yr';
@@ -33,12 +34,13 @@ const METHOD_LABELS: Record<LDFMethod, string> = {
   'simple-5yr': '5-yr Simple Average',
 };
 
+// Same values as the prior_ultimates table in sql/setup.sql (sum over accident years).
 const DEFAULT_PRIOR_ULTIMATES: Record<string, number> = {
-  'collision-overall': 2037.5,
-  'collision-tier1': 1201.1,
-  'collision-tier2': 841.2,
+  'collision-overall': 2037.6,
+  'collision-tier1': 1201.3,
+  'collision-tier2': 840.5,
   'comprehensive-overall': 847.0,
-  'liability-overall': 706.8,
+  'liability-overall': 707.0,
 };
 
 function getFactorForPeriod(lr: ReturnType<typeof computeLinkRatios>[number], method: LDFMethod): number {
@@ -132,24 +134,27 @@ export default function ConsistencyPage() {
   const [trianglesById, setTrianglesById] = useState<Record<string, LossTriangle>>(TRIANGLES_BY_ID);
   const [priorUltimates, setPriorUltimates] = useState<Record<string, number>>(DEFAULT_PRIOR_ULTIMATES);
 
-  useEffect(() => {
-    if (HOSTED_EXAMPLE) return;
-    fetch('/api/triangles').then(r => r.json()).then(data => {
-      if (data.triangles?.length) {
-        setTriangles(data.triangles);
-        const byId: Record<string, LossTriangle> = {};
-        for (const t of data.triangles) byId[t.id] = t;
-        setTrianglesById(byId);
-      }
-    }).catch(() => {});
-    fetch('/api/prior-ultimates').then(r => r.json()).then(data => {
-      if (data.priorUltimates) setPriorUltimates(data.priorUltimates);
-    }).catch(() => {});
-  }, []);
+  const { mode } = useMode();
+  const [error, setError] = useState<string>();
 
+  useEffect(() => {
+    if (mode !== 'live') return;
+    Promise.all([
+      liveJson<{ triangles: LossTriangle[] }>('/api/triangles'),
+      liveJson<{ priorUltimates: Record<string, number> }>('/api/prior-ultimates'),
+    ]).then(([t, p]) => {
+      setTriangles(t.triangles);
+      const byId: Record<string, LossTriangle> = {};
+      for (const x of t.triangles) byId[x.id] = x;
+      setTrianglesById(byId);
+      setPriorUltimates(p.priorUltimates);
+    }).catch((e: Error) => setError(e.message));
+  }, [mode]);
+
+  // Deterministic chain-ladder recalculation in the browser on the loaded triangles (from Snowflake in
+  // Live mode). No AI is involved, so there is no simulated delay.
   const runTest = async () => {
     setIsRunning(true);
-    await new Promise(r => setTimeout(r, 1400));
 
     const rows: ResultRow[] = triangles.map(t => {
       const prior = priorUltimates[t.id] ?? 0;
@@ -170,8 +175,10 @@ export default function ConsistencyPage() {
 
   const resetRules = () => { setRules(DEFAULT_RULES); setResults(null); };
 
-  const totalPrior = results?.reduce((s, r) => s + r.prior, 0) ?? 0;
-  const totalCurrent = results?.reduce((s, r) => s + r.current, 0) ?? 0;
+  // Portfolio totals use the overall triangles only; Tier 1 and Tier 2 split collision overall.
+  const portfolio = results?.filter(r => r.id.endsWith('-overall'));
+  const totalPrior = portfolio?.reduce((s, r) => s + r.prior, 0) ?? 0;
+  const totalCurrent = portfolio?.reduce((s, r) => s + r.current, 0) ?? 0;
   const totalChange = totalCurrent - totalPrior;
 
   const chartData = results?.map(r => ({
@@ -183,6 +190,7 @@ export default function ConsistencyPage() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
+      {error && <LiveError message={error} />}
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-2">
@@ -318,7 +326,7 @@ export default function ConsistencyPage() {
               <div className="w-10 h-10 border-2 border-t-purple-500 rounded-full animate-spin mb-4"
                 style={{ borderColor: 'var(--color-border)', borderTopColor: 'var(--color-accent)' }} />
               <div className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                Cortex is applying selection rules...
+                Recomputing ultimates with your selection rules...
               </div>
               <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
                 Computing ultimates across 5 triangles · 8 accident years each
@@ -331,7 +339,7 @@ export default function ConsistencyPage() {
               {/* KPI row */}
               <div className="grid grid-cols-3 gap-4">
                 {[
-                  { label: 'Prior Total Ultimate', value: `$${totalPrior.toFixed(1)}M`, sub: 'Carried reserve' },
+                  { label: 'Prior Total Ultimate', value: `$${totalPrior.toFixed(1)}M`, sub: 'Carried, overall triangles' },
                   {
                     label: 'Current Total Ultimate',
                     value: `$${totalCurrent.toFixed(1)}M`,
@@ -410,7 +418,7 @@ export default function ConsistencyPage() {
                             ${row.current.toFixed(1)}M
                           </td>
                           <td className="px-4 py-2.5 tabular-nums text-right font-semibold" style={{ color: changeColor }}>
-                            {isInc ? '+' : ''}${row.change.toFixed(1)}M
+                            {isInc ? '+' : '−'}${Math.abs(row.change).toFixed(1)}M
                           </td>
                           <td className="px-4 py-2.5 tabular-nums text-right font-semibold" style={{ color: changeColor }}>
                             {isInc ? '+' : ''}{row.changePct.toFixed(1)}%
@@ -424,7 +432,7 @@ export default function ConsistencyPage() {
                       );
                     })}
                     <tr style={{ background: 'rgba(123,14,160,0.12)', borderTop: '2px solid var(--color-border)' }}>
-                      <td className="px-4 py-2.5 font-bold" style={{ color: 'var(--color-text-primary)' }}>Total Portfolio</td>
+                      <td className="px-4 py-2.5 font-bold" style={{ color: 'var(--color-text-primary)' }}>Portfolio (overall triangles)</td>
                       <td className="px-4 py-2.5 tabular-nums text-right font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
                         ${totalPrior.toFixed(1)}M
                       </td>

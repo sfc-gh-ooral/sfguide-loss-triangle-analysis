@@ -7,7 +7,8 @@
     "build": "next build",
     "build:example": "node scripts/build-hosted-example.mjs",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "capture": "node scripts/capture-screenshots.mjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -28,6 +29,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "playwright": "^1.65.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

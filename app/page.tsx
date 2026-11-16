@@ -6,8 +6,17 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import { TrendingUp, TrendingDown, Database, BarChart3, MessageSquare, Triangle, ArrowRight, AlertTriangle, CheckCircle } from 'lucide-react';
-import { HOSTED_EXAMPLE } from '@/lib/hosted';
-import { PORTFOLIO_KPIS, DEVELOPMENT_TREND_DATA, RESERVE_WATERFALL } from '@/lib/data';
+import { PORTFOLIO_KPIS, DEVELOPMENT_TREND_DATA, RESERVE_WATERFALL, ALL_TRIANGLES, developmentTrend } from '@/lib/data';
+import { liveJson, useMode } from '@/lib/mode';
+import { computeAnomalies, type Anomaly } from '@/lib/anomalies';
+import type { LossTriangle } from '@/lib/types';
+import { DataSourceChip, LiveError } from '@/components/AiBadges';
+
+const SAMPLE_ANOMALIES = computeAnomalies(ALL_TRIANGLES);
+const TRI_LABEL: Record<string, string> = {
+  'collision-overall': 'Collision', 'collision-tier1': 'Collision Tier 1', 'collision-tier2': 'Collision Tier 2',
+  'comprehensive-overall': 'Comprehensive', 'liability-overall': 'Liability',
+};
 
 function KPICard({ label, value, sub, trend, trendUp }: {
   label: string; value: string; sub?: string; trend?: string; trendUp?: boolean;
@@ -52,7 +61,7 @@ const CHART_COLORS = {
 
 const AY_LABELS: Record<string, string> = {
   ay2019: 'AY 2019', ay2020: 'AY 2020 (COVID)',
-  ay2021: 'AY 2021', ay2022: 'AY 2022 (Inflation)',
+  ay2021: 'AY 2021', ay2022: 'AY 2022',
   ay2023: 'AY 2023', ay2024: 'AY 2024',
 };
 
@@ -76,7 +85,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 }
 
 const QUICK_ACTIONS = [
-  { href: '/chat', icon: MessageSquare, label: 'Ask Cortex a Question', desc: 'AI-powered actuarial analysis', color: 'var(--color-accent)' },
+  { href: '/chat', icon: MessageSquare, label: 'Ask the Cortex Agent', desc: 'Questions answered from the views', color: 'var(--color-accent)' },
   { href: '/triangles', icon: Triangle, label: 'Explore Triangles', desc: 'View and analyze loss triangles', color: '#3B82F6' },
   { href: '/segments', icon: BarChart3, label: 'Segment Analysis', desc: 'Compare coverage segments', color: '#10B981' },
   { href: '/consistency', icon: CheckCircle, label: 'Consistency Test', desc: 'Apply uniform selection rules', color: 'var(--color-warning)' },
@@ -85,17 +94,26 @@ const QUICK_ACTIONS = [
 export default function DashboardPage() {
   const [kpi, setKpi] = useState(PORTFOLIO_KPIS);
   const [waterfall, setWaterfall] = useState(RESERVE_WATERFALL);
-  const [dataSource, setDataSource] = useState<'mock' | 'snowflake'>('mock');
+  const [trend, setTrend] = useState(DEVELOPMENT_TREND_DATA);
+  const [anomalies, setAnomalies] = useState<Anomaly[]>(SAMPLE_ANOMALIES);
+  const [error, setError] = useState<string>();
+  const { mode } = useMode();
+  const live = mode === 'live';
 
   useEffect(() => {
-    if (HOSTED_EXAMPLE) return;
-    fetch('/api/kpis').then(r => r.json()).then(data => {
-      if (data.kpis) { setKpi(data.kpis); setDataSource(data.source ?? 'mock'); }
-    }).catch(() => {});
-    fetch('/api/waterfall').then(r => r.json()).then(data => {
-      if (data.waterfall) setWaterfall(data.waterfall);
-    }).catch(() => {});
-  }, []);
+    if (mode !== 'live') return;
+    Promise.all([
+      liveJson<{ kpis: typeof PORTFOLIO_KPIS }>('/api/kpis'),
+      liveJson<{ waterfall: typeof RESERVE_WATERFALL }>('/api/waterfall'),
+      liveJson<{ anomalies: Anomaly[] }>('/api/anomalies'),
+      liveJson<{ triangles: LossTriangle[] }>('/api/triangles'),
+    ]).then(([k, w, a, t]) => {
+      setKpi(k.kpis); setWaterfall(w.waterfall); setAnomalies(a.anomalies);
+      const co = t.triangles.find(x => x.id === 'collision-overall');
+      if (co) setTrend(developmentTrend(co));
+    }).catch((e: Error) => setError(e.message));
+  }, [mode]);
+  const shownAnomalies = anomalies.filter(a => a.triangleId.endsWith('-overall')).slice(0, 4);
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -106,18 +124,17 @@ export default function DashboardPage() {
             style={{ background: 'rgba(123,14,160,0.2)', color: 'var(--color-accent-light)', border: '1px solid rgba(123,14,160,0.3)' }}>
             Eval Date: {kpi.evalDate}
           </div>
-          <div className="text-xs px-2.5 py-1 rounded-full font-semibold"
-            style={{ background: 'rgba(41,181,232,0.15)', color: 'var(--color-snowflake)', border: '1px solid rgba(41,181,232,0.25)' }}>
-            {dataSource === 'snowflake' ? 'Live Data · Snowflake' : 'Sample Data Mode'}
-          </div>
+          {mode && <DataSourceChip live={live} />}
         </div>
         <h1 className="text-3xl font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
           Loss Reserve Portfolio
         </h1>
         <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-          Paid Loss Development Summary
+          Paid loss development summary on synthetic triangles
         </p>
       </div>
+
+      {error && <LiveError message={error} />}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-4 gap-4 mb-8">
@@ -130,20 +147,19 @@ export default function DashboardPage() {
           label="IBNR Estimate"
           value={`$${kpi.ibnrEstimate.toFixed(1)}M`}
           sub="Incurred but not reported"
-          trend="+3.9% vs prior"
-          trendUp
+          
         />
         <KPICard
           label="Ultimate Estimate"
           value={`$${kpi.ultimateEstimate.toFixed(1)}M`}
-          sub="Across all coverages & AYs"
-          trend={`+$${kpi.changeFromPrior.toFixed(1)}M vs prior`}
+          sub="Collision, comprehensive, liability (overall)"
+          trend={`${kpi.changeFromPrior >= 0 ? '+' : ''}$${kpi.changeFromPrior.toFixed(1)}M (${kpi.changeFromPriorPct.toFixed(1)}%) vs prior`}
           trendUp
         />
         <KPICard
           label="Active Triangles"
           value={`${kpi.activeTriangles}`}
-          sub="Collision, Comp, Liability × Segment"
+          sub="3 coverages overall + 2 collision tiers"
         />
       </div>
 
@@ -164,7 +180,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={DEVELOPMENT_TREND_DATA} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+            <AreaChart data={trend} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 {Object.entries(CHART_COLORS).map(([key, color]) => (
                   <linearGradient key={key} id={`grad-${key}`} x1="0" y1="0" x2="0" y2="1">
@@ -259,20 +275,25 @@ export default function DashboardPage() {
           style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-              Cortex Anomaly Alerts
+              Anomaly Flags
             </h2>
             <span className="text-xs px-2 py-0.5 rounded-full"
               style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--color-negative)' }}>
-              4 flagged
+              {anomalies.length} flagged
             </span>
           </div>
+          <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
+            Link ratios more than 1.5 standard deviations from the period mean, computed in the{' '}
+            <code>v_anomalies</code> Snowflake view{live ? '' : ' (same rule run on the sample data)'}. Top 4 on the overall triangles:
+          </p>
           <div className="space-y-2.5">
-            {[
-              { severity: 'high', ay: '2022 AY', period: '24→36 months', desc: '2.1σ above mean — inflation effect', ratio: '1.152 vs. 1.086 avg' },
-              { severity: 'high', ay: '2020 AY', period: '12→24 months', desc: 'COVID catch-up — exclude from avg', ratio: '1.555 vs. 1.364 avg' },
-              { severity: 'medium', ay: '2024 AY', period: '12 months paid', desc: '$13.8M above trend expectation', ratio: '$162.4M vs. $148.6M trend' },
-              { severity: 'low', ay: '2021 AY', period: '48→60 months', desc: 'Slightly elevated but within bounds', ratio: '1.024 vs. 1.016 expected' },
-            ].map((alert, i) => {
+            {shownAnomalies.map(a => ({
+              severity: Math.abs(a.z) >= 2 ? 'high' : 'medium',
+              ay: `${TRI_LABEL[a.triangleId] ?? a.triangleId} · AY ${a.accidentYear}`,
+              period: `${a.devFrom}→${a.devTo} months`,
+              desc: `${a.z.toFixed(1)}σ from the period mean`,
+              ratio: `${a.linkRatio.toFixed(3)} vs. ${a.meanRatio.toFixed(3)} mean`,
+            })).map((alert, i) => {
               const color = alert.severity === 'high' ? 'var(--color-negative)'
                 : alert.severity === 'medium' ? 'var(--color-warning)' : 'var(--color-positive)';
               const bg = alert.severity === 'high' ? 'rgba(239,68,68,0.08)'
@@ -298,7 +319,7 @@ export default function DashboardPage() {
             className="mt-4 flex items-center gap-2 text-xs font-medium transition-colors"
             style={{ color: 'var(--color-accent-light)' }}>
             <MessageSquare className="w-3.5 h-3.5" />
-            Ask Cortex to explain these anomalies
+            Ask the Cortex Agent about these anomalies
             <ArrowRight className="w-3 h-3" />
           </Link>
         </div>

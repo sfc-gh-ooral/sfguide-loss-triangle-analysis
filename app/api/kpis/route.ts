@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { executeQuery, isSnowflakeConfigured } from '@/lib/snowflake';
-import { PORTFOLIO_KPIS } from '@/lib/data';
+import { executeQuery, isSnowflakeConfigured, liveError, notConfigured } from '@/lib/snowflake';
 
 interface KpiRow {
   TOTAL_REPORTED: number;
@@ -14,31 +13,23 @@ interface KpiRow {
 }
 
 export async function GET() {
-  if (!isSnowflakeConfigured()) {
-    return NextResponse.json({ kpis: PORTFOLIO_KPIS, source: 'mock' });
-  }
-
+  if (!isSnowflakeConfigured()) return notConfigured();
   try {
     const { rows } = await executeQuery<KpiRow>('SELECT * FROM v_portfolio_kpis');
-    if (rows.length === 0) {
-      return NextResponse.json({ kpis: PORTFOLIO_KPIS, source: 'mock' });
-    }
-
+    if (rows.length === 0) return liveError('v_portfolio_kpis returned no rows. Re-run sql/setup.sql.');
     const r = rows[0];
     const kpis = {
       totalReportedLoss: r.TOTAL_REPORTED,
       ibnrEstimate: r.TOTAL_IBNR,
       ultimateEstimate: r.TOTAL_ULTIMATE,
       activeTriangles: r.ACTIVE_TRIANGLES,
-      evalDate: r.EVAL_DATE,
+      evalDate: new Date(r.EVAL_DATE).toLocaleDateString('en-US', { timeZone: 'UTC', month: '2-digit', day: '2-digit', year: 'numeric' }),
       priorUltimate: r.PRIOR_TOTAL_ULTIMATE,
       changeFromPrior: r.CHANGE_FROM_PRIOR,
       changeFromPriorPct: r.CHANGE_PCT,
     };
-
     return NextResponse.json({ kpis, source: 'snowflake' });
   } catch (error) {
-    console.error('KPI query failed, falling back to mock:', error);
-    return NextResponse.json({ kpis: PORTFOLIO_KPIS, source: 'mock', error: String(error) });
+    return liveError(error);
   }
 }

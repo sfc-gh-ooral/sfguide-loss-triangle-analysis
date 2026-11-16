@@ -5,7 +5,8 @@ import { ALL_TRIANGLES } from '@/lib/data';
 import TriangleTable from '@/components/TriangleTable';
 import type { LossTriangle } from '@/lib/types';
 import { Triangle, ChevronRight, Info } from 'lucide-react';
-import { HOSTED_EXAMPLE } from '@/lib/hosted';
+import { liveJson, useMode } from '@/lib/mode';
+import { LiveError } from '@/components/AiBadges';
 import { cn } from '@/lib/utils';
 
 const COVERAGE_COLORS: Record<string, string> = {
@@ -24,18 +25,19 @@ export default function TrianglesPage() {
   const [triangles, setTriangles] = useState<LossTriangle[]>(ALL_TRIANGLES);
   const [selected, setSelected] = useState<LossTriangle>(ALL_TRIANGLES[0]);
 
+  const { mode } = useMode();
+  const [error, setError] = useState<string>();
+
   useEffect(() => {
-    if (HOSTED_EXAMPLE) return;
-    fetch('/api/triangles').then(r => r.json()).then(data => {
-      if (data.triangles?.length) {
-        setTriangles(data.triangles);
-        setSelected(data.triangles[0]);
-      }
-    }).catch(() => {});
-  }, []);
+    if (mode !== 'live') return;
+    liveJson<{ triangles: LossTriangle[] }>('/api/triangles').then(data => {
+      setTriangles(data.triangles);
+      setSelected(data.triangles[0]);
+    }).catch((e: Error) => setError(e.message));
+  }, [mode]);
 
   return (
-    <div className="flex h-screen">
+    <div className="flex" style={{ height: 'calc(100vh - 45px)' }}>
       {/* Sidebar list */}
       <div className="w-64 flex-shrink-0 flex flex-col border-r"
         style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-border)' }}>
@@ -116,13 +118,16 @@ export default function TrianglesPage() {
           </p>
         </div>
 
+        {error && <LiveError message={error} />}
         {/* Info bar */}
         <div className="flex items-center gap-2 px-4 py-3 rounded-lg mb-6"
           style={{ background: 'rgba(41,181,232,0.08)', border: '1px solid rgba(41,181,232,0.2)' }}>
           <Info className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-snowflake)' }} />
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-            <strong style={{ color: 'var(--color-snowflake)' }}>Snowflake Cortex</strong> generated this triangle from the claims data warehouse.
-            Highlighted cells indicate anomalous development. Selected LDFs (purple row) are volume-weighted averages, modifiable by actuarial review.
+            {mode === 'live'
+              ? <>Loaded from <strong style={{ color: 'var(--color-snowflake)' }}>PAID_LOSS_TRIANGLES</strong> in Snowflake (synthetic data).</>
+              : <>Bundled synthetic sample data, identical to what <code>sql/setup.sql</code> loads.</>}
+            {' '}Highlighted cells indicate anomalous development. Selected LDFs (purple row) are volume-weighted averages, modifiable by actuarial review.
           </p>
         </div>
 

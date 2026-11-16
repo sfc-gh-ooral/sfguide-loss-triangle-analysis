@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { executeQuery, isSnowflakeConfigured } from '@/lib/snowflake';
-import { ALL_TRIANGLES, DEVELOPMENT_MONTHS, ACCIDENT_YEARS, EVAL_DATE } from '@/lib/data';
+import { executeQuery, isSnowflakeConfigured, liveError, notConfigured } from '@/lib/snowflake';
+import { DEVELOPMENT_MONTHS, ACCIDENT_YEARS } from '@/lib/data';
 import type { LossTriangle } from '@/lib/types';
 
 interface TriangleRow {
@@ -27,10 +27,7 @@ interface TailRow {
 }
 
 export async function GET() {
-  // If Snowflake is not configured, return mock data
-  if (!isSnowflakeConfigured()) {
-    return NextResponse.json({ triangles: ALL_TRIANGLES, source: 'mock' });
-  }
+  if (!isSnowflakeConfigured()) return notConfigured();
 
   try {
     const [triResult, factorResult, tailResult] = await Promise.all([
@@ -53,7 +50,7 @@ export async function GET() {
           name: row.TRIANGLE_NAME,
           coverage: row.COVERAGE as LossTriangle['coverage'],
           segment: row.SEGMENT as LossTriangle['segment'],
-          evalDate: row.EVAL_DATE,
+          evalDate: new Date(row.EVAL_DATE).toLocaleDateString('en-US', { timeZone: 'UTC', month: '2-digit', day: '2-digit', year: 'numeric' }),
           accidentYears: ACCIDENT_YEARS,
           developmentMonths: DEVELOPMENT_MONTHS,
           paidLosses: ACCIDENT_YEARS.map(() => DEVELOPMENT_MONTHS.map(() => null as number | null)),
@@ -91,7 +88,6 @@ export async function GET() {
     const triangles = Array.from(triangleMap.values());
     return NextResponse.json({ triangles, source: 'snowflake' });
   } catch (error) {
-    console.error('Snowflake query failed, falling back to mock data:', error);
-    return NextResponse.json({ triangles: ALL_TRIANGLES, source: 'mock', error: String(error) });
+    return liveError(error);
   }
 }

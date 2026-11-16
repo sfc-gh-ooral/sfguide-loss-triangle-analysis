@@ -183,33 +183,36 @@ export const TRIANGLES_BY_ID: Record<string, LossTriangle> = Object.fromEntries(
 );
 
 // ─── PORTFOLIO KPI DATA ───────────────────────────────────────────────────────
+// Matches v_portfolio_kpis in sql/setup.sql: totals over the three "overall" triangles
+// (Tier 1 / Tier 2 split collision overall, so they are not added again).
 export const PORTFOLIO_KPIS = {
-  totalReportedLoss: 2401.3, // $M
-  ibnrEstimate: 312.7,       // $M
-  ultimateEstimate: 2714.0,  // $M
-  activeTriangles: 18,
+  totalReportedLoss: 3320.3, // $M
+  ibnrEstimate: 382.23,      // $M
+  ultimateEstimate: 3702.53, // $M
+  activeTriangles: 5,
   evalDate: EVAL_DATE,
-  priorUltimate: 2612.5,
-  changeFromPrior: 101.5,
-  changeFromPriorPct: 3.9,
+  priorUltimate: 3591.6,
+  changeFromPrior: 110.93,
+  changeFromPriorPct: 3.09,
 };
 
-// ─── DEVELOPMENT TREND CHART DATA ────────────────────────────────────────────
-export const DEVELOPMENT_TREND_DATA = [
-  { period: '12mo', ay2019: 154.4, ay2020: 109.7, ay2021: 168.4, ay2022: 175.5, ay2023: 168.1, ay2024: 162.4 },
-  { period: '24mo', ay2019: 208.7, ay2020: 170.7, ay2021: 232.1, ay2022: 242.2, ay2023: 233.6, ay2024: null },
-  { period: '36mo', ay2019: 233.1, ay2020: 199.9, ay2021: 259.7, ay2022: 279.2, ay2023: null, ay2024: null },
-  { period: '48mo', ay2019: 242.0, ay2020: 208.8, ay2021: 269.2, ay2022: null, ay2023: null, ay2024: null },
-  { period: '60mo', ay2019: 245.5, ay2020: 212.3, ay2021: null, ay2022: null, ay2023: null, ay2024: null },
-  { period: '72mo', ay2019: 247.4, ay2020: null, ay2021: null, ay2022: null, ay2023: null, ay2024: null },
-];
+// ─── DEVELOPMENT TREND CHART DATA ─────────────────────────────────────────────
+// Cumulative paid by development age for AY 2019-2024 on one triangle (collision overall by default).
+export function developmentTrend(t: LossTriangle) {
+  return t.developmentMonths.slice(0, 6).map((m, d) => {
+    const row: Record<string, string | number | null> = { period: `${m}mo` };
+    t.accidentYears.forEach((ay, i) => { if (ay >= 2019) row[`ay${ay}`] = t.paidLosses[i][d]; });
+    return row;
+  });
+}
+export const DEVELOPMENT_TREND_DATA = developmentTrend(collisionOverall);
 
 // ─── RESERVE WATERFALL ────────────────────────────────────────────────────────
+// Matches v_reserve_waterfall: prior-to-current bridge by accident-year group.
 export const RESERVE_WATERFALL = [
-  { name: 'Prior Carried', value: 2612.5, type: 'base' as const },
-  { name: '2022 Dev', value: 63.4, type: 'increase' as const },
-  { name: '2024 Emergence', value: 31.2, type: 'increase' as const },
-  { name: 'Tail Revision', value: 13.3, type: 'increase' as const },
-  { name: '2020 Run-off', value: -6.4, type: 'decrease' as const },
-  { name: 'Current Est.', value: 2714.0, type: 'total' as const },
+  { name: 'Prior Carried', value: 3591.6, type: 'base' as const },
+  { name: 'Mature AYs 2017-2021', value: 65.4, type: 'increase' as const },
+  { name: 'AY 2022-2023 Development', value: 31.1, type: 'increase' as const },
+  { name: 'AY 2024 Emergence', value: 14.5, type: 'increase' as const },
+  { name: 'Current Estimate', value: 3702.5, type: 'total' as const },
 ];

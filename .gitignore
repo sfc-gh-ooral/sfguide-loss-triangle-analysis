@@ -37,3 +37,10 @@ yarn-error.log*
 
 # hosted example build
 /.api-parked/
+
+# keys and logs (generate keys outside the repo, e.g. ~/.snowflake/keys/)
+*.p8
+*.pub
+rsa_key*
+snowflake.log
+/out/

@@ -78,17 +78,17 @@ export default function Sidebar() {
       <div className="px-4 py-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
         <div className="rounded-lg p-3" style={{ background: 'rgba(41,181,232,0.08)', border: '1px solid rgba(41,181,232,0.2)' }}>
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--color-snowflake)' }} />
+            <div className="w-2 h-2 rounded-full" style={{ background: 'var(--color-snowflake)' }} />
             <span className="text-xs font-semibold" style={{ color: 'var(--color-snowflake)' }}>
               Snowflake Cortex
             </span>
           </div>
           <p className="text-xs leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
-            Powered by Cortex Agents + claude-3-5-sonnet
+            Cortex Agent + Cortex Analyst for chat; AI_COMPLETE for segment insights
           </p>
         </div>
         <p className="text-xs mt-3 text-center" style={{ color: 'var(--color-text-muted)' }}>
-          Demo — Eval Date 12/31/2024
+          Example · Eval date 12/31/2024
         </p>
       </div>
     </aside>
