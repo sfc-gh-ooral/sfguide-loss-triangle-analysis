@@ -12,10 +12,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="h-full">
-      <body className="h-full flex" style={{ background: 'var(--color-surface-0)' }}>
+      <body className="h-full flex flex-col lg:flex-row" style={{ background: 'var(--color-surface-0)' }}>
         <Sidebar />
-        <main className="flex-1 ml-64 overflow-auto" style={{ minHeight: '100vh' }}>
-          <header className="sticky top-0 z-30 px-8 py-2.5 flex items-center gap-3 border-b text-xs"
+        <main className="flex-1 min-w-0 lg:ml-64 overflow-auto" style={{ minHeight: '100vh' }}>
+          <header className="sticky top-0 z-30 px-4 lg:px-8 py-2.5 flex flex-wrap lg:flex-nowrap items-center gap-3 border-b text-xs"
             style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}>
             <span className="flex-1">
               {HOSTED_EXAMPLE ? (

@@ -37,9 +37,9 @@ export default function TrianglesPage() {
   }, [mode]);
 
   return (
-    <div className="flex" style={{ height: 'calc(100vh - 45px)' }}>
+    <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-45px)]">
       {/* Sidebar list */}
-      <div className="w-64 flex-shrink-0 flex flex-col border-r"
+      <div className="w-full lg:w-64 max-h-72 lg:max-h-none flex-shrink-0 flex flex-col border-b lg:border-b-0 lg:border-r"
         style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-border)' }}>
         <div className="px-4 py-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
           <h1 className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
@@ -95,7 +95,7 @@ export default function TrianglesPage() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 overflow-auto p-8">
+      <div className="flex-1 min-w-0 overflow-auto p-4 lg:p-8">
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs px-2 py-0.5 rounded-full font-semibold capitalize"

@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, MessageSquare, Triangle, Layers, CheckSquare, Zap } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { LayoutDashboard, MessageSquare, Triangle, Layers, CheckSquare, Zap, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
@@ -15,9 +16,42 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const menuBtn = useRef<HTMLButtonElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+
+  // Close the mobile drawer on navigation.
+  useEffect(() => { setOpen(false); }, [pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+    asideRef.current?.querySelector<HTMLElement>('a')?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(false); menuBtn.current?.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
 
   return (
-    <aside className="fixed inset-y-0 left-0 w-64 flex flex-col z-40"
+    <>
+    {/* Mobile top bar */}
+    <div className="lg:hidden sticky top-0 z-40 h-14 flex-shrink-0 px-4 flex items-center gap-3 border-b"
+      style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-border)' }}>
+      <button ref={menuBtn} type="button" onClick={() => setOpen(o => !o)}
+        aria-expanded={open} aria-controls="app-sidebar" aria-label={open ? 'Close menu' : 'Open menu'}
+        className="w-9 h-9 rounded-lg flex items-center justify-center"
+        style={{ color: 'var(--color-text-primary)', border: '1px solid var(--color-border)' }}>
+        {open ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+      </button>
+      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'var(--color-accent)' }}>
+        <Zap className="w-4 h-4 text-white" />
+      </div>
+      <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>Loss Triangles</span>
+    </div>
+    {open && <div className="lg:hidden fixed inset-0 top-14 z-30 bg-black/60" onClick={() => setOpen(false)} />}
+    <aside id="app-sidebar" ref={asideRef}
+      className={cn('fixed left-0 w-64 max-w-[85vw] flex-col z-40 top-14 bottom-0 lg:top-0 lg:flex', open ? 'flex' : 'hidden')}
       style={{ background: 'var(--color-surface-1)', borderRight: '1px solid var(--color-border)' }}>
 
       {/* Logo */}
@@ -92,5 +126,6 @@ export default function Sidebar() {
         </p>
       </div>
     </aside>
+    </>
   );
 }

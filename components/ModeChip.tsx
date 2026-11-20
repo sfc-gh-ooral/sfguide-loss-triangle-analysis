@@ -38,7 +38,7 @@ export function ModeChip() {
       {help && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setHelp(false)}>
           <div role="dialog" aria-modal="true" aria-labelledby="live-help-title"
-            className="max-w-lg w-full p-5 rounded-xl"
+            className="max-w-lg w-full max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 rounded-xl"
             style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-3 mb-3">

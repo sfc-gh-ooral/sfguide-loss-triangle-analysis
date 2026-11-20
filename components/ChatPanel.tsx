@@ -356,7 +356,7 @@ export default function ChatPanel() {
   return (
     <div className="flex flex-col h-full">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="flex-1 overflow-y-auto px-4 lg:px-6 py-6">
         {messages.map(msg => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
@@ -379,7 +379,7 @@ export default function ChatPanel() {
 
       {/* Suggested prompts */}
       {messages.length <= 1 && (
-        <div className="px-6 pb-4 grid grid-cols-2 gap-2">
+        <div className="px-4 lg:px-6 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
           {SUGGESTED_PROMPTS.map(prompt => {
             const Icon = ICON_MAP[prompt.icon] ?? Table2;
             return (
@@ -408,7 +408,7 @@ export default function ChatPanel() {
       )}
 
       {/* Input */}
-      <div className="px-6 pb-6 pt-2">
+      <div className="px-4 lg:px-6 pb-6 pt-2">
         <form onSubmit={handleSubmit}
           className="flex gap-2 rounded-xl px-4 py-3"
           style={{ background: 'var(--color-surface-3)', border: '1px solid var(--color-border)' }}>

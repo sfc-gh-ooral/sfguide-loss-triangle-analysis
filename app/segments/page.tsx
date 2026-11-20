@@ -130,9 +130,9 @@ export default function SegmentsPage() {
     : { overall: '#9C27B0', tier1: '#C44FE8', tier2: '#7C3AED' };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex flex-wrap lg:flex-nowrap items-start justify-between gap-4 lg:gap-0 mb-8">
         <div>
           <div className="flex items-center gap-2 mb-2">
             <Layers className="w-5 h-5" style={{ color: 'var(--color-accent-light)' }} />
@@ -184,13 +184,13 @@ export default function SegmentsPage() {
       </div>
 
       {/* Triangles side by side */}
-      <div className="grid gap-6 mb-8"
-        style={{ gridTemplateColumns: `repeat(${Math.min(segments.length, 2)}, 1fr)` }}>
+      <div className="grid grid-cols-1 lg:[grid-template-columns:repeat(var(--seg-cols),1fr)] gap-6 mb-8"
+        style={{ '--seg-cols': Math.min(segments.length, 2) } as React.CSSProperties}>
         {segments.map(seg => {
           const triangle = trianglesById[seg.id];
           if (!triangle) return null;
           return (
-            <div key={seg.id} className="rounded-xl overflow-hidden"
+            <div key={seg.id} className="min-w-0 rounded-xl overflow-hidden"
               style={{ border: `1px solid ${seg.color}30`, background: 'var(--color-surface-2)' }}>
               <div className="px-4 py-3 flex items-center gap-2 border-b"
                 style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface-3)' }}>

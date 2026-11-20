@@ -116,7 +116,7 @@ export default function DashboardPage() {
   const shownAnomalies = anomalies.filter(a => a.triangleId.endsWith('-overall')).slice(0, 4);
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
@@ -137,7 +137,7 @@ export default function DashboardPage() {
       {error && <LiveError message={error} />}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KPICard
           label="Total Reported Loss"
           value={`$${kpi.totalReportedLoss.toFixed(1)}M`}
@@ -164,7 +164,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Main content grid */}
-      <div className="grid grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
 
         {/* Development Chart */}
         <div className="col-span-2 rounded-xl p-5"
@@ -230,7 +230,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Reserve Waterfall + Anomaly Alerts */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Waterfall */}
         <div className="rounded-xl p-5"

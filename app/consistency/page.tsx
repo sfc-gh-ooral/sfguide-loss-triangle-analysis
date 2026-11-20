@@ -189,7 +189,7 @@ export default function ConsistencyPage() {
   }));
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-4 lg:p-8 max-w-6xl mx-auto">
       {error && <LiveError message={error} />}
       {/* Header */}
       <div className="mb-8">
@@ -204,7 +204,7 @@ export default function ConsistencyPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Rule Builder */}
         <div className="col-span-1">
           <div className="rounded-xl p-5 sticky top-6"
@@ -337,7 +337,7 @@ export default function ConsistencyPage() {
           {results && (
             <>
               {/* KPI row */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
                   { label: 'Prior Total Ultimate', value: `$${totalPrior.toFixed(1)}M`, sub: 'Carried, overall triangles' },
                   {
